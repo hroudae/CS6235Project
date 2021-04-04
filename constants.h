@@ -5,6 +5,10 @@
 
 #define BLOCK_SIZE_BITS 128
 
+#define BIT_KEY_128     128
+#define BIT_KEY_192     192
+#define BIT_KEY_256     256
+
 // AES key sized used
 typedef enum {
     AES128_VERSION,
