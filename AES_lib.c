@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Debugging functions */
+void printState(state_t state);
 
 /* Key Functions */
 uint32_t rotl32 (uint32_t value, unsigned int count);
@@ -23,6 +25,16 @@ void InvSubBytes(state_t* state);
 void InvShiftRows(state_t* state);
 void InvMixColumns(state_t* state);
 
+
+void printState(state_t state) {
+    int i, j;
+    for (i = 0; i < 4; i++) {
+        for (j = 0; j < 4; j++) {
+            printf("%02x ", state[i][j]);
+        }
+        printf("\n");
+    }
+}
 
 // circular shift left: https://en.wikipedia.org/wiki/Circular_shift
 uint32_t rotl32 (uint32_t value, unsigned int count) {
@@ -135,15 +147,7 @@ void MixColumns(state_t* state) {
     for (j = 0; j < 4; j++) {
         for (i = 0; i < 4; i++) {
             col[i] = (*state)[i][j];
-            uint8_t high = (col[i] >> 7) & 1;
-            mult[i] = col[i] << 1; // multiply by 2
-            mult[i] ^= high * 0x1b; // XOR with 0x1b if MSB was 1
         }
-
-        // (*state)[0][j] = mult[0] ^ col[3] ^ col[2] ^ mult[1] ^ col[1];
-        // (*state)[1][j] = mult[1] ^ col[0] ^ col[3] ^ mult[2] ^ col[2];
-        // (*state)[2][j] = mult[2] ^ col[1] ^ col[0] ^ mult[3] ^ col[3];
-        // (*state)[3][j] = mult[3] ^ col[2] ^ col[1] ^ mult[0] ^ col[0];
 
         (*state)[0][j] = mult_x2[col[0]] ^ mult_x3[col[1]] ^ col[2] ^ col[3];
         (*state)[1][j] = col[0] ^ mult_x2[col[1]] ^ mult_x3[col[2]] ^ col[3];

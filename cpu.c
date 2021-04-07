@@ -6,17 +6,7 @@
 
 #include "AES_lib.h"
 #include "constants.h"
-
-
-void printState(state_t state) {
-    int i, j;
-    for (i = 0; i < 4; i++) {
-        for (j = 0; j < 4; j++) {
-            printf("%02x ", state[i][j]);
-        }
-        printf("\n");
-    }
-}
+#include "fileio.h"
 
 void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* roundKeys, AESVersion_t vers, int charCount) {
     unsigned int numround = 0;
@@ -36,7 +26,7 @@ void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* 
     }
 
     unsigned int blocks = (charCount + (BLOCK_SIZE_BITS / 8)-1) / (BLOCK_SIZE_BITS / 8);
-
+    printf("blocks encr: %d\n", blocks);
     int i;
     for (i = 0; i < blocks; i++) {
         AES_Encrypt_Block(plainText+i*(BLOCK_SIZE_BITS / 8), cipherText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
@@ -61,7 +51,7 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
     }
 
     unsigned int blocks = (charCount + (BLOCK_SIZE_BITS / 8)-1) / (BLOCK_SIZE_BITS / 8);
-
+    printf("blocks decr: %d\n", blocks);
     int i;
     for (i = 0; i < blocks; i++) {
         AES_Decrypt_Block(cipherText+i*(BLOCK_SIZE_BITS / 8), plainText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
@@ -86,25 +76,38 @@ int main(int argc, char* argv[]) {
     }
     printf("\n");
 
-    unsigned char data[16] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
-    unsigned char cipherText[16] = {0};
-    unsigned char decryptPlainText[16] = {0};
-    unsigned char data_copy[16]  = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
-    for (i = 0; i < 16; i++) {
-        printf("%02x", data[i]);
+    unsigned char *string;
+    int fsize = 0;
+    if ((fsize = readfile("2701-0.txt", &string, 10485760)) < 1) {
+        printf("ERROR reading input file.\n");
+        return 1;
     }
-    printf("\n");
+    
+    unsigned char *cipherText =  malloc(fsize + 1);
+    unsigned char *decryptPlainText =  malloc(fsize + 1);
 
-    AES_Encrypt(data, cipherText, roundKeys, version, 16);
-    for (i = 0; i < 16; i++) {
-        printf("%02x", data[i]);
-    }
-    printf("\n");
+    // for (i = 0; i < fsize; i++) {
+    //     printf("%02x", string[i]);
+    // }
+    // printf("\n");
 
-    AES_Decrypt(cipherText, decryptPlainText, roundKeys, version, 16);
-    for (i = 0; i < 16; i++) {
-        printf("%02x", data[i]);
-        if (decryptPlainText[i] != data_copy[i]) printf("\nERROR\n");
+    AES_Encrypt(string, cipherText, roundKeys, version, fsize);
+    // for (i = 0; i < fsize; i++) {
+    //     printf("%02x", cipherText[i]);
+    // }
+    // printf("\n");
+
+    AES_Decrypt(cipherText, decryptPlainText, roundKeys, version, fsize);
+    for (i = 0; i < fsize; i++) {
+        // printf("%02x", decryptPlainText[i]);
+        if (decryptPlainText[i] != string[i]) printf("\nERROR: %02x %02x\n", decryptPlainText[i], string[i]);
     }
     printf("\n");
+    // printf("%s\n", string);
+
+    free(string);
+    free(cipherText);
+    free(decryptPlainText);
+
+    return 0;
 }
