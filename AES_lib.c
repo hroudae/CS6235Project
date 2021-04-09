@@ -6,9 +6,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* Debugging functions */
 void printState(state_t state);
+
+/* Mode of operations functions */
+void incrementCounter(uint32_t *ctr);
 
 /* Key Functions */
 uint32_t rotl32 (uint32_t value, unsigned int count);
@@ -25,6 +29,37 @@ void InvSubBytes(state_t* state);
 void InvShiftRows(state_t* state);
 void InvMixColumns(state_t* state);
 
+
+
+void GetIV(uint32_t *iv) {
+    srand(time(0)); // seed the generator
+    int i;
+    for (i = 0; i < 4; i++) {
+        // rand() is not cryptographically secure, read from /dev/urandom?
+        iv[i] = rand() & 0xff;
+        iv[i] |= (rand() & 0xff) << 8;
+        iv[i] |= (rand() & 0xff) << 16;
+        iv[i] |= (rand() & 0xff) << 24;
+    }
+}
+
+void incrementCounter(uint32_t *ctr) {
+    int i;
+    if (ctr[1] == 0xffffffff && ctr[2] == 0xffffffff && ctr[3] == 0xffffffff) ctr[0]++;
+    if (ctr[2] == 0xffffffff && ctr[3] == 0xffffffff) ctr[1]++;
+    if (ctr[3]++ == 0xffffffff) ctr[2]++;
+}
+
+void CTR_GetCounter(uint32_t iv[4], uint32_t cnt[4], unsigned char ctr_char[16]) {
+    int i, j, shift;
+    incrementCounter(cnt);
+    for (i = 0; i < 4; i++) { // convert ctr to char array
+        uint32_t chunk = cnt[i] ^ iv[i];
+        for (j = i*4, shift = 24; j < (i+1)*4; j++, shift -= 8) {
+            ctr_char[j] = (unsigned char) (chunk >> shift);
+        }
+    }
+}
 
 void printState(state_t state) {
     int i, j;
@@ -103,9 +138,7 @@ void AddRoundKey(state_t* state, uint32_t* roundKeys, int round) {
     int i, j, s;
     for (i = 0, s = 3; i < 4; i++, s--) {
         for (j = 0; j < 4; j ++) {
-            // printf("%02x XOR %02x = ",(*state)[i][j], (uint8_t)(roundKeys[(round-1)*4 + j] >> (8*s)));
             (*state)[i][j] ^= (uint8_t) (roundKeys[(round-1)*4 + j] >> (8*s));
-            // printf("%02x\n", (*state)[i][j]);
         }
     }
 }
