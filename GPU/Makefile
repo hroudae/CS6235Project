@@ -1,2 +1,2 @@
 all:
-	nvcc -o AES AES.cu constants.cu AES_lib.cu
+	nvcc -rdc=true -o AES AES.cu constants.cu AES_lib.cu
