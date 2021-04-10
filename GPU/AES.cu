@@ -11,8 +11,10 @@
 #define KEY_SIZE_ARGUMENT_INDEX     1
 
 
+
+
 __global__ void
-naive_AES_encrypt(unsigned char* cipherText_d, unsigned char* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks)
+naive_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks)
 {
     int i = blockDim.x*blockIdx.x + threadIdx.x;
 
@@ -22,49 +24,47 @@ naive_AES_encrypt(unsigned char* cipherText_d, unsigned char* plainText_d, uint3
                           cipherText_d + i * (BLOCK_SIZE_BITS / 8), 
                           roundKeys_d, numRounds);
     }
-
 }
 
 __global__ void
-naive_AES_decrypt(unsigned char* plainText_d, unsigned char* cipherText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks)
+naive_AES_decrypt(uint8_t* plainText_d, uint8_t* cipherText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks)
 {
-    int i = blockDim.x*blockIdx.x + threadIdx.x;
+    //int i = blockDim.x*blockIdx.x + threadIdx.x;
 
-    if(i<numPlainTextBlocks)
+   /* if(i<numPlainTextBlocks)
     {
         AES_Decrypt_Block(cipherText_d + i * (BLOCK_SIZE_BITS / 8), 
                           plainText_d  + i * (BLOCK_SIZE_BITS / 8), 
                           roundKeys_d, numRounds);
-    }
+    }   */
 
 }
 
-cudaError_t AES_Encrypt(char* plainText_h, char* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes)
+static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes)
 {
-    cudaError_t err = cudaSuccess;
-    unsigned int numround = 0;
-    unsigned char* plainText_d = NULL;
-    uint32_t* roundKeys_d      = NULL;
-    uint32_t* cipherText_d     = NULL;
-    unsigned int plainTextBlockCnt;
+    cudaError_t err       = cudaSuccess;
+    uint8_t* plainText_d  = NULL;
+    uint8_t* cipherText_d = NULL;
+    uint32_t* roundKeys_d = NULL;
+    uint32_t plainTextBlockCnt;
 
 
     /*** Malloc Device memory ***/
-    err = cudaMalloc(void**)&plainText_d, plainTextSize_bytes);
+    err = cudaMalloc((void**)&plainText_d, plainTextSize_bytes);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to allocate device vector plainText_d (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
 
-    err = cudaMalloc(void**)&roundKeys_d, sizeof(uint32_t) * numRounds * 4);
+    err = cudaMalloc((void**)&roundKeys_d, sizeof(uint32_t) * numRounds * 4);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to allocate device vector roundKeys_d (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
 
-    err = cudaMalloc(void**)&cipherText_d, plainTextSize_bytes);
+    err = cudaMalloc((void**)&cipherText_d, plainTextSize_bytes);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to allocate device vector cipherText_d (error code %s)!\n", cudaGetErrorString(err));
@@ -139,32 +139,31 @@ cudaError_t AES_Encrypt(char* plainText_h, char* cipherText_h, uint32_t* roundKe
     return err;
 }
 
-cudaError_t AES_Decrypt(char* plainText_h, char* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes)
+cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes)
 {
-    cudaError_t err = cudaSuccess;
-    unsigned int numround = 0;
-    unsigned char* plainText_d = NULL;
-    uint32_t* roundKeys_d      = NULL;
-    uint32_t* cipherText_d     = NULL;
-    unsigned int plainTextBlockCnt;
+    cudaError_t err       = cudaSuccess;
+    uint32_t* roundKeys_d = NULL;
+    uint8_t* plainText_d  = NULL;
+    uint8_t* cipherText_d = NULL;
+    uint32_t plainTextBlockCnt;
 
 
     /*** Malloc Device memory ***/
-    err = cudaMalloc(void**)&plainText_d, plainTextSize_bytes);
+    err = cudaMalloc((void**)&plainText_d, plainTextSize_bytes);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to allocate device vector plainText_d (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
 
-    err = cudaMalloc(void**)&roundKeys_d, sizeof(uint32_t) * numRounds * 4);
+    err = cudaMalloc((void**)&roundKeys_d, sizeof(uint32_t) * numRounds * 4);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to allocate device vector roundKeys_d (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
 
-    err = cudaMalloc(void**)&cipherText_d, plainTextSize_bytes);
+    err = cudaMalloc((void**)&cipherText_d, plainTextSize_bytes);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to allocate device vector cipherText_d (error code %s)!\n", cudaGetErrorString(err));
@@ -252,10 +251,10 @@ main( int argc, char **argv )
     NumRounds_t rounds = AES128_ROUNDS;
     AESVersion_t version = AES128_VERSION;
 
-    unsigned char* en_plainText;
-    unsigned char* de_plainText;
-    unsigned char* plainText_verification;
-    unsigned char* cipherText;
+    uint8_t* en_plainText;
+    uint8_t* de_plainText;
+    uint8_t* plainText_verification;
+    uint8_t* cipherText;
 
     // TODO: Need to also supply filename of key 
     if(argc > 1)
@@ -321,7 +320,7 @@ main( int argc, char **argv )
 
     err = AES_Encrypt(en_plainText, cipherText, roundKeys, rounds, plainTextSize_bytes);
 
-    err = AES_Decrypt(de_plainText, cipherText_h, roundKeys_h, rounds, plainTextSize_bytes);
+    err = AES_Decrypt(de_plainText, cipherText, roundKeys, rounds, plainTextSize_bytes);
 
     /*** Free Host Memory ***/
     free(key);
