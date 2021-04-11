@@ -72,14 +72,14 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
 
 //Stuff for Reading Test Files
 //Takes a line of test file to turn into NUM of 8hex vals
-void parseKey(uint32_t* hex, uint32_t* out, int outLength){
+void parseKey(char* hex, uint32_t* out, int outLength){
    char subkey[8];
-   uint8_t idx;
+   char* idx;
    //Initial Offsets -- Feels Sloppy
    switch(hex[0]){
       case 'K':
-         // idx = hex+6;
-         idx = 6;
+         idx = hex+6;
+         // idx = 6;
          break;
       case 'P':
          idx = hex+13; //12
@@ -92,12 +92,11 @@ void parseKey(uint32_t* hex, uint32_t* out, int outLength){
          printf("shouldn't happen \n");
    }
    //source of bug
-   // strncpy(subkey, idx, 8);
-
+   strncpy(subkey, idx, 8);
    for (int i = 0; i < outLength; i++) {
-       // strncpy(subkey, idx, 8);
+       strncpy(subkey, idx, 8);
        // printf("Subkey: %s\n", subkey);
-       out[i] = *(uint32_t*)(&hex[idx]); //(uint32_t)strtoul(subkey, NULL, 16); //
+       out[i] =  (uint32_t) strtoul(subkey, NULL, 16); //
        idx += 8;
        printf("out[%d] %08x \n", i, out[i]);
    }
