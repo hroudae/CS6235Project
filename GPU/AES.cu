@@ -5,12 +5,14 @@
 #include <string.h>
 #include "constants.h"
 #include "AES_lib.h"
+#include "fileio.h"
 
-#define USE_TEST_CODE               1
 
 #define KEY_SIZE_ARGUMENT_INDEX     1
+#define KEY_FP_INDEX                2
+#define PLAIN_TEXT_FP_INDEX         3
 
-
+#define CHARS_PER_BYTE              2
 
 
 __global__ void
@@ -27,16 +29,16 @@ naive_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKe
 }
 
 __global__ void
-naive_AES_decrypt(uint8_t* plainText_d, uint8_t* cipherText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks)
+naive_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks)
 {
-    //int i = blockDim.x*blockIdx.x + threadIdx.x;
+    int i = blockDim.x*blockIdx.x + threadIdx.x;
 
-   /* if(i<numPlainTextBlocks)
+    if(i<numPlainTextBlocks)
     {
         AES_Decrypt_Block(cipherText_d + i * (BLOCK_SIZE_BITS / 8), 
                           plainText_d  + i * (BLOCK_SIZE_BITS / 8), 
                           roundKeys_d, numRounds);
-    }   */
+    }
 
 }
 
@@ -47,6 +49,13 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     uint8_t* cipherText_d = NULL;
     uint32_t* roundKeys_d = NULL;
     uint32_t plainTextBlockCnt;
+
+    cudaEvent_t start, stop;
+    float seconds = 0;
+
+
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
 
 
     /*** Malloc Device memory ***/
@@ -93,7 +102,9 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     dim3 threadsPerBlock(threadBlockDim, 1, 1);
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
 
+    cudaEventRecord(start);
     naive_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
+    cudaEventRecord(stop);
 
     err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -109,6 +120,10 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
         exit(EXIT_FAILURE);
     }
 
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&seconds, start, stop);
+    
+    fprintf(stderr, "Encrypt Execution Time: %fs\n", seconds);
 
 
     /*** Free Device Mem ***/
@@ -146,6 +161,13 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     uint8_t* plainText_d  = NULL;
     uint8_t* cipherText_d = NULL;
     uint32_t plainTextBlockCnt;
+
+    cudaEvent_t start, stop;
+    float seconds = 0;
+
+
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
 
 
     /*** Malloc Device memory ***/
@@ -192,7 +214,9 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     dim3 threadsPerBlock(threadBlockDim, 1, 1);
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
 
-    naive_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
+    cudaEventRecord(start);
+    naive_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
+    cudaEventRecord(stop);
 
     err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -208,6 +232,10 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
         exit(EXIT_FAILURE);
     }
 
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&seconds, start, stop);
+    
+    fprintf(stderr, "Decrypt Execution Time: %fs\n", seconds);
 
 
     /*** Free Device Mem ***/
@@ -238,11 +266,13 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     return err;
 }
 
-
+/* arguments keySize, keyFile, plainTextFile */
 main( int argc, char **argv )
 {
     cudaError_t err = cudaSuccess;
     uint32_t plainTextSize_bytes = 0;
+    uint32_t plainTextSizeAligned_bytes = 0;
+    uint32_t loopNdx;
 
     uint32_t* key;
     uint32_t* roundKeys;
@@ -256,9 +286,34 @@ main( int argc, char **argv )
     uint8_t* plainText_verification;
     uint8_t* cipherText;
 
-    // TODO: Need to also supply filename of key 
+    bool verificationSuccessful = true;
+
+#ifdef USE_TEST_CODE
+
+#else
+    unsigned char* inFilekey;
+    uint32_t expectedKeySize;
+    unsigned char* inputPlainText;
+    uint32_t numCharRead = 0;
+    uint32_t appendedZeroCnt_bytes = 0;
+#endif
+
+
     if(argc > 1)
     {
+
+#ifdef USE_TEST_CODE
+        fprintf(stderr, "Test code enabled: Cannot supply arguments\n");
+        return 1;
+#else
+
+
+        if(argc > 4)
+        {
+            fprintf(stderr, "Expecting at most 3 arguments: Keysize, KeyfilePath, PlainTextPath\n");
+        }
+
+
         if(atoi(argv[KEY_SIZE_ARGUMENT_INDEX]) == BIT_KEY_128)
         {
             keySize_words = AES128_KEYSIZE;
@@ -280,25 +335,73 @@ main( int argc, char **argv )
         else
         {
             fprintf(stderr, "Invalid key size: %d\n", atoi(argv[KEY_SIZE_ARGUMENT_INDEX]));
+        } 
+
+        
+        expectedKeySize = keySize_words*sizeof(uint32_t)*CHARS_PER_BYTE;
+
+        numCharRead = readfile(argv[KEY_FP_INDEX], &inFilekey, expectedKeySize);
+        if (numCharRead < 1 || numCharRead != expectedKeySize)
+        {
+            fprintf(stderr, "ERROR reading key file with size: %d\n", numCharRead);
+            return 1;
         }
+        else
+        {
+            fprintf(stderr, "Read %d bytes from input key file\n", numCharRead/CHARS_PER_BYTE);
+        }
+        
+
+        plainTextSize_bytes = readfile(argv[PLAIN_TEXT_FP_INDEX], &inputPlainText, 16777216);
+        if (plainTextSize_bytes < 1)
+        {
+            fprintf(stderr, "ERROR reading plainText file\n");
+            return 1;
+        }
+        else
+        {
+            fprintf(stderr, "Read %d bytes from input plain text file\n", plainTextSize_bytes);
+        }
+
+#if 0
+        fprintf(stderr, "\n");
+        for(loopNdx=0; loopNdx<100; loopNdx++)
+        {
+            fprintf(stderr,"%c", inputPlainText[loopNdx]);
+        }
+        fprintf(stderr, "\n");
+#endif
+
+        fprintf(stderr, "\n");
+#endif
+    }
+    else
+    {
+#ifdef USE_TEST_CODE
+        fprintf(stderr, "Using hardcoded test: 1 block and 256 bit key\n");
+#else
+        fprintf(stderr, "insufficient arguments and test code disabled.\n");
+#endif
     }
 
 
-#if (USE_TEST_CODE)
+#ifdef USE_TEST_CODE
     keySize_words       = AES256_KEYSIZE;
     rounds              = AES256_ROUNDS;
     plainTextSize_bytes = 16;
 #endif
 
+    appendedZeroCnt_bytes = BLOCK_SIZE_BITS - plainTextSize_bytes%BLOCK_SIZE_BITS;
+    plainTextSizeAligned_bytes = plainTextSize_bytes + appendedZeroCnt_bytes;
 
-    key = (uint32_t*)malloc(sizeof(uint32_t*) * keySize_words);
-    roundKeys = (uint32_t*)malloc(sizeof(uint32_t*) * rounds * 4);
-    en_plainText = (unsigned char*)malloc(sizeof(unsigned char) * plainTextSize_bytes);
-    de_plainText = (unsigned char*)malloc(sizeof(unsigned char) * plainTextSize_bytes);
-    plainText_verification = (unsigned char*)malloc(sizeof(unsigned char) * plainTextSize_bytes);
-    cipherText = (unsigned char*)malloc(sizeof(unsigned char) * plainTextSize_bytes);
+    key = (uint32_t*)calloc(sizeof(uint32_t*) * keySize_words, sizeof(uint32_t));
+    roundKeys = (uint32_t*)calloc(sizeof(uint32_t*) * rounds * 4, sizeof(uint32_t));
+    en_plainText = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
+    de_plainText = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
+    plainText_verification = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSize_bytes, sizeof(uint8_t));
+    cipherText = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
 
-#if (USE_TEST_CODE)
+#ifdef USE_TEST_CODE
     uint32_t sample256Key[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f, 
                                 0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f};
 
@@ -311,16 +414,66 @@ main( int argc, char **argv )
 
 #else
     // TODO: copy supplied key file into key
-    memcpy((void*)key, (void*)inputKey, sizeof(uint32_t*)*keySize_words);
+    /*uint32_t inputKey[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f, 
+                                0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f};*/
+
+    getDecKeyfromAsciiKey((char*)inFilekey, key, keySize_words);
+
+#if 0
+    fprintf(stderr, "\n");
+    for(loopNdx=0; loopNdx<keySize_words; loopNdx++)
+    {
+        fprintf(stderr,"key[%d]=0x%08x\n", loopNdx, key[loopNdx]);
+    }
+    fprintf(stderr, "\n");
+#endif
+
     memcpy((void*)en_plainText, (void*)inputPlainText, plainTextSize_bytes);
     memcpy((void*)plainText_verification, (void*)inputPlainText, plainTextSize_bytes);
 #endif
 
     KeyExpansion(key, roundKeys, version);
 
-    err = AES_Encrypt(en_plainText, cipherText, roundKeys, rounds, plainTextSize_bytes);
+#if 0
+    for(loopNdx=0; loopNdx<plainTextSizeAligned_bytes; loopNdx++)
+    {
+        printf("plaintText[%d]=%02x\n", loopNdx, en_plainText[loopNdx]);
+    }
+    fprintf(stderr, "\n");
+#endif
 
-    err = AES_Decrypt(de_plainText, cipherText, roundKeys, rounds, plainTextSize_bytes);
+    err = AES_Encrypt(en_plainText, cipherText, roundKeys, rounds, plainTextSizeAligned_bytes);
+
+#if 0
+    for(loopNdx=0; loopNdx<plainTextSizeAligned_bytes; loopNdx++)
+    {
+        printf("cipherText[%d]=%02x\n", loopNdx, cipherText[loopNdx]);
+    }
+    fprintf(stderr, "\n");
+#endif
+
+    err = AES_Decrypt(de_plainText, cipherText, roundKeys, rounds, plainTextSizeAligned_bytes);
+
+#if 0
+    fprintf(stderr, "Verifications plainTextSize_bytes: %d\n", plainTextSize_bytes);
+    fprintf(stderr, "Verifications plainTextSizeAligned_bytes: %d\n", plainTextSizeAligned_bytes);
+#endif
+
+    for(loopNdx=0; loopNdx<plainTextSize_bytes; loopNdx++)
+    {
+        if(de_plainText[loopNdx] != plainText_verification[loopNdx])
+        {
+            fprintf(stderr, "Verification Failed at index %d! %02x!=%02x\n", 
+                loopNdx, de_plainText[loopNdx], plainText_verification[loopNdx]);
+
+            verificationSuccessful = false;
+        }
+    }
+
+    if(verificationSuccessful)
+    {
+        fprintf(stderr, "\nVerification successful\n");
+    }
 
     /*** Free Host Memory ***/
     free(key);
@@ -336,5 +489,5 @@ main( int argc, char **argv )
         exit(EXIT_FAILURE);
     }
 
-    fprintf(stderr, "GPU Implemntaion of AES Completed \n"); 
+    fprintf(stderr, "AES Execution Completed\n"); 
 }
