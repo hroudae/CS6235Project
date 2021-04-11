@@ -1,2 +1,5 @@
 all:
-	nvcc -rdc=true -o AES AES.cu constants.cu AES_lib.cu
+	nvcc -rdc=true -DUSE_TEST_CODE -o AES AES.cu constants.cu AES_lib.cu
+
+
+

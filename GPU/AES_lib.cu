@@ -163,7 +163,7 @@ void MixColumns(state_t* state) {
 __device__
 void AES_Encrypt_Block(uint8_t* plainText, uint8_t* cipherText, uint32_t* roundKeys, unsigned int numround) 
 {
-    /* state_t state;
+    state_t state;
     int i, j, d;
     for (i = 0, d = 0; i < 4; i++)
         for (j = 0; j < 4; j++, d++) {
@@ -189,7 +189,7 @@ void AES_Encrypt_Block(uint8_t* plainText, uint8_t* cipherText, uint32_t* roundK
     for (i = 0, d = 0; i < 4; i++)
         for (j = 0; j < 4; j++, d++) {
             cipherText[d] = (uint8_t) state[j][i];
-        }*/
+        }
 }
 
 __device__
@@ -268,4 +268,17 @@ void AES_Decrypt_Block(uint8_t* cipherText, uint8_t* plainText, uint32_t* roundK
         for (j = 0; j < 4; j++, d++) {
             plainText[d] = (uint8_t) state[j][i];
         }
+}
+
+void getDecKeyfromAsciiKey(char* asciiKey, uint32_t* decimalKey, uint32_t keyLength_words)
+{
+   char word[NUM_CHARS_IN_WORD];
+
+   for(int i = 0; i < keyLength_words; i++)
+   {
+        strncpy(word, asciiKey+(i*NUM_CHARS_IN_WORD), NUM_CHARS_IN_WORD);
+        decimalKey[i] = (uint32_t)strtoul(word, NULL, BASE_HEX);
+   }
+
+   return;
 }
