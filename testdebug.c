@@ -79,26 +79,24 @@ void parseKey(char* hex, uint32_t* out, int outLength){
    switch(hex[0]){
       case 'K':
          idx = hex+6;
-         // idx = 6;
          break;
-      case 'P':
-         idx = hex+13; //12
-         break;
-      case 'C':
-         idx = hex+14; //13
-         break;
+      // case 'P':
+      //    idx = hex+13; //12
+      //    break;
+      // case 'C':
+      //    idx = hex+14; //13
+      //    break;
       default:
          return;
          printf("shouldn't happen \n");
    }
-   //source of bug
-   strncpy(subkey, idx, 8);
+
    for (int i = 0; i < outLength; i++) {
        strncpy(subkey, idx, 8);
        // printf("Subkey: %s\n", subkey);
        out[i] =  (uint32_t) strtoul(subkey, NULL, 16); //
        idx += 8;
-       printf("out[%d] %08x \n", i, out[i]);
+       // printf("out[%d] %08x \n", i, out[i]);
    }
 }
 
@@ -116,10 +114,9 @@ void parseLine(char* hex, unsigned char* out[], int outLength){
          idx = hex+13;
          break;
       default:
+         printf("Err: Unexpected Line %s \n", hex);
          return;
-         printf("This shouldn't happen \n");
    }
-   strncpy(subkey, idx, 2);
 
    for (int i = 0; i < outLength; i++) {
        strncpy(subkey, idx, 2);
@@ -180,12 +177,12 @@ int main(int argc, char* argv[]){
              printf("%s", line);
              flipper = -1;
              parseKey(line, key, keysize); //Functional But hardcoded
-             printf("\n Key Text: ");
+             // printf("\n Key Text: ");
              // printUCharArr(cipherknown, 16);
-             for (int i = 0; i < keysize; i++) {
-                 printf("%08x", key[i]);
-               }
-               printf("\n");
+             // for (int i = 0; i < keysize; i++) {
+                 // printf("%08x", key[i]);
+               // }
+               // printf("\n");
              break;
           case 'P':
              printf("%s", line);
@@ -209,15 +206,16 @@ int main(int argc, char* argv[]){
         //encrypt
         KeyExpansion(key, roundKeys, version);
         AES_Encrypt(plaintext, cipherText, roundKeys, version, 16);
-        printf("\nKey Expansion:\n");
-        for (int i = 0; i < 4*rounds; i++) {
-            printf("%08x", roundKeys[i]);
-            if ((i+1) % 4 == 0) printf("\n");
-        }
-        printf("\n");
-        printf("\nInput: ");
-        for (int i = 0; i < 16; i++) {
-            printf("%02x", plaintext[i]);
+        // printf("\nKey Expansion:\n");
+        // for (int i = 0; i < 4*rounds; i++) {
+        //     printf("%08x", roundKeys[i]);
+        //     if ((i+1) % 4 == 0) printf("\n");
+        // }
+
+        for (int i = 0; i < 16; i++){
+          if (cipherText[i] != cipherknown[i]) {
+            printf("Err: %02x is not equal to %02x \n", cipherText[i], cipherknown[i]);
+          }
         }
 
         printf("\nOutput: ");
@@ -228,9 +226,8 @@ int main(int argc, char* argv[]){
         for (int i = 0; i < 16; i++) {
             printf("%02x", cipherknown[i]);
         }
-        printf("\n End Test \n");
 
-        //check answer
+        printf("\n End Test \n");
 
         flipper = -1;
 
@@ -238,22 +235,10 @@ int main(int argc, char* argv[]){
         memcpy(cipherText, emptyStorage, sizeof(emptyStorage));
       }
 
-      //
-      // if (line[0] == 'K' || line[0] == 'P' || line[0] == 'C') {
-      //   printf("line %s \n", line);
-      //   if(line[1] != 'O'){
-      //
-      //     printf("Line: %s \n", line);
-          // parseLine(line, key, 6); //Functional But hardcoded
-      // }
-      // }
-
+    
        }
        fclose(fp);
        if (line)
            free(line);
        exit(EXIT_SUCCESS);
 }
-//
-// int main(int argc, char* argv[]){
-// }
