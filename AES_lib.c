@@ -11,9 +11,6 @@
 /* Debugging functions */
 void printState(state_t state);
 
-/* Mode of operations functions */
-void incrementCounter(uint32_t *ctr);
-
 /* Key Functions */
 uint32_t rotl32 (uint32_t value, unsigned int count);
 uint32_t SubWord(uint32_t word);
@@ -30,34 +27,39 @@ void InvShiftRows(state_t* state);
 void InvMixColumns(state_t* state);
 
 
-
-void GetIV(uint32_t *iv) {
-    srand(time(0)); // seed the generator
-    int i;
-    for (i = 0; i < 4; i++) {
-        // rand() is not cryptographically secure, read from /dev/urandom?
-        iv[i] = rand() & 0xff;
-        iv[i] |= (rand() & 0xff) << 8;
-        iv[i] |= (rand() & 0xff) << 16;
-        iv[i] |= (rand() & 0xff) << 24;
+// Get random bytes from /dev/urandom 
+int GetIV(uint8_t *iv) {
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (f == NULL) { // couldn't open the file
+        perror("ERROR");
+        return -1;
     }
-}
-
-void incrementCounter(uint32_t *ctr) {
-    int i;
-    if (ctr[1] == 0xffffffff && ctr[2] == 0xffffffff && ctr[3] == 0xffffffff) ctr[0]++;
-    if (ctr[2] == 0xffffffff && ctr[3] == 0xffffffff) ctr[1]++;
-    if (ctr[3]++ == 0xffffffff) ctr[2]++;
-}
-
-void CTR_GetCounter(uint32_t iv[4], uint32_t cnt[4], unsigned char ctr_char[16]) {
-    int i, j, shift;
-    incrementCounter(cnt);
-    for (i = 0; i < 4; i++) { // convert ctr to char array
-        uint32_t chunk = cnt[i] ^ iv[i];
-        for (j = i*4, shift = 24; j < (i+1)*4; j++, shift -= 8) {
-            ctr_char[j] = (unsigned char) (chunk >> shift);
+    else { // get 16 random bytes
+        int rd = fread(iv, 1, 16, f);
+        fclose(f);
+        if (rd < 16) {
+            perror("ERROR");
+            return -1;
         }
+    }
+    return 0;
+}
+
+// Increment the 128 bit counter
+void incrementCounter(uint8_t *ctr) {
+    uint64_t high = ((uint64_t) ctr[0] << 56) | ((uint64_t) ctr[1] << 48) | 
+                    ((uint64_t) ctr[2] << 40) | ((uint64_t) ctr[3] << 32) |
+                    ((uint64_t) ctr[4] << 24) | ((uint64_t) ctr[5] << 16) | 
+                    ((uint64_t) ctr[6] << 8)  | ((uint64_t) ctr[7]);
+    uint64_t low  = ((uint64_t) ctr[8] << 56)  | ((uint64_t) ctr[9] << 48)  | 
+                    ((uint64_t) ctr[10] << 40) | ((uint64_t) ctr[11] << 32) |
+                    ((uint64_t) ctr[12] << 24) | ((uint64_t) ctr[13] << 16) | 
+                    ((uint64_t) ctr[14] << 8)  | ((uint64_t) ctr[15]);
+    if (++low == 0) ++high;
+    int i, shift;
+    for (i = 0, shift = 56; i < 8; i++, shift -= 8) {
+        ctr[i] = (uint8_t) (high >> shift);
+        ctr[i+8] = (uint8_t) (low >> shift);
     }
 }
 

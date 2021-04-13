@@ -10,9 +10,9 @@
 #include "fileio.h"
 
 // TODO: need to return IV somehow
-void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* roundKeys, AESVersion_t vers, int charCount, ModeOfOperation_t mode, uint32_t iv[4]) {
+void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* roundKeys, AESVersion_t vers, int charCount, ModeOfOperation_t mode, uint8_t *iv) {
     unsigned int numround = 0;
-    uint32_t cnt[4] = {0, 0, 0, 0}; // counter for CTR mode
+    uint8_t counter[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     switch(vers) {
         case AES128_VERSION:
@@ -30,17 +30,22 @@ void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* 
 
     // generate a random IV to be used in CTR mode
     if (mode == CTR) {
-        GetIV(iv);
+        if (GetIV(iv) < 0) {
+            printf("Error getting IV!\n");
+            return;
+        }
+        // copy iv to the counter so iv is preserved for decryption
+        int i;
+        for (i = 0; i < 16; i++) counter[i] = iv[i];
     }
 
     unsigned int blocks = (charCount + (BLOCK_SIZE_BITS / 8)-1) / (BLOCK_SIZE_BITS / 8);
     printf("blocks encr: %d\n", blocks);
     int i, j;
     for (i = 0; i < blocks; i++) {
-        if (mode == CTR) { // Encrypt the IV XOR CNT value then XOR with plaintext to obtain ciphertext
-            unsigned char ctr_char[16]; // char array to encrypt
-            CTR_GetCounter(iv, cnt, ctr_char);
-            AES_Encrypt_Block(ctr_char, cipherText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
+        if (mode == CTR) { // Encrypt the counter value then XOR with plaintext to obtain ciphertext
+            incrementCounter(counter);
+            AES_Encrypt_Block(counter, cipherText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
             for (j = 0; j < 16; j++)
                 *((cipherText+i*(BLOCK_SIZE_BITS / 8))+j) ^= *(plainText+i*(BLOCK_SIZE_BITS / 8)+j);
         }
@@ -48,9 +53,9 @@ void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* 
     }
 }
 
-void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* roundKeys, AESVersion_t vers, int charCount, ModeOfOperation_t mode, uint32_t iv[4]) {
+void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* roundKeys, AESVersion_t vers, int charCount, ModeOfOperation_t mode, uint8_t *iv) {
     unsigned int numround = 0;
-    uint32_t cnt[4] = {0, 0, 0, 0}; // counter for CTR mode
+    uint8_t counter[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     switch(vers) {
         case AES128_VERSION:
@@ -66,14 +71,19 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
             numround = 0;
     }
 
+    if (mode == CTR) {
+        // copy iv to the counter so iv is preserved
+        int i;
+        for (i = 0; i < 16; i++) counter[i] = iv[i];
+    }
+
     unsigned int blocks = (charCount + (BLOCK_SIZE_BITS / 8)-1) / (BLOCK_SIZE_BITS / 8);
     printf("blocks decr: %d\n", blocks);
     int i, j;
     for (i = 0; i < blocks; i++) {
-        if (mode == CTR) { // Encrypt the IV XOR CNT value then XOR with ciphertext to obtain plaintext
-            unsigned char ctr_char[16]; // char array to encrypt
-            CTR_GetCounter(iv, cnt, ctr_char);
-            AES_Encrypt_Block(ctr_char, plainText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
+        if (mode == CTR) { // Encrypt the counter value then XOR with ciphertext to obtain plaintext
+            incrementCounter(counter);
+            AES_Encrypt_Block(counter, plainText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
             for (j = 0; j < 16; j++)
                 *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText+i*(BLOCK_SIZE_BITS / 8))+j);
         }
@@ -83,12 +93,13 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
 
 // useful test vectors: 
 // http://citeseer.ist.psu.edu/viewdoc/download;jsessionid=B640BEEE8389FD7D024F4A5160E56EA4?doi=10.1.1.21.5680&rep=rep1&type=pdf
+// CTR mode test with NIST example vectors:
+// https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf
 int main(int argc, char* argv[]) {
     AESVersion_t version = AES256_VERSION;
     NumRounds_t rounds = AES256_ROUNDS;
     ModeOfOperation_t mode = CTR;
 
-    // uint32_t key[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f, 0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f};
     uint32_t key[8] = {0x603deb10, 0x15ca71be, 0x2b73aef0, 0x857d7781, 0x1f352c07, 0x3b6108d7, 0x2d9810a3, 0x0914dff4};
     uint32_t *roundKeys = malloc(sizeof(uint32_t) * (4*rounds));
 
@@ -119,12 +130,18 @@ int main(int argc, char* argv[]) {
     //     printf("%02x", string[i]);
     // }
     // printf("\n");
-    uint32_t iv[4] = {0, 0, 0, 0};
+    uint8_t *iv = malloc(16*sizeof(uint8_t));
     AES_Encrypt(string, cipherText, roundKeys, version, fsize, mode, iv);
     // for (i = 0; i < fsize; i++) {
     //     printf("%02x", cipherText[i]);
     // }
     // printf("\n");
+    
+    printf("iv: ");
+    for (i = 0; i < 16; i++) {
+        printf("%02x", iv[i]);
+    }
+    printf("\n");
 
     AES_Decrypt(cipherText, decryptPlainText, roundKeys, version, fsize, mode, iv);
     for (i = 0; i < fsize; i++) {
@@ -137,6 +154,7 @@ int main(int argc, char* argv[]) {
     free(string);
     free(cipherText);
     free(decryptPlainText);
+    free(iv);
 
     return 0;
 }
