@@ -34,6 +34,12 @@ typedef enum {
     AES256_KEYSIZE = 8
 } KeySize_Word_t;
 
+// Mode of operations
+typedef enum {
+    ECB,        // electronic codebook mode - not secure
+    CTR         // counter mode
+} ModeOfOperation_t;
+
 typedef uint8_t state_t[4][4];
 
 
