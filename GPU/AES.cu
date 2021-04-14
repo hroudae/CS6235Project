@@ -11,6 +11,7 @@
 #define KEY_SIZE_ARGUMENT_INDEX     1
 #define KEY_FP_INDEX                2
 #define PLAIN_TEXT_FP_INDEX         3
+#define MODE_INDEX                  4
 
 #define CHARS_PER_BYTE              2
 
@@ -42,13 +43,51 @@ naive_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKe
 
 }
 
-static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes)
+__global__ void
+ctr_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks, uint8_t* counter) {
+    int i = blockDim.x*blockIdx.x + threadIdx.x;
+    int j;
+
+    if(i<numPlainTextBlocks)
+    {
+        uint8_t ctr[16];
+        incrementCounter(ctr, counter, i);
+        AES_Encrypt_Block(ctr, 
+                          cipherText_d + i * (BLOCK_SIZE_BITS / 8), 
+                          roundKeys_d, numRounds);
+        
+        for (j = 0; j < 16; j++) {
+            *((cipherText_d+i*(BLOCK_SIZE_BITS / 8))+j) ^= *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j);
+        }
+    }
+}
+
+__global__ void
+ctr_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks, uint8_t* counter) {
+    int i = blockDim.x*blockIdx.x + threadIdx.x;
+    int j;
+
+    if(i<numPlainTextBlocks)
+    {
+        uint8_t ctr[16];
+        incrementCounter(ctr, counter, i);
+        AES_Encrypt_Block(ctr, 
+            plainText_d + i * (BLOCK_SIZE_BITS / 8), 
+            roundKeys_d, numRounds);
+
+        for (j = 0; j < 16; j++)
+            *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+i*(BLOCK_SIZE_BITS / 8))+j);
+    }
+}
+
+static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes, ModeOfOperation_t mode, uint8_t *iv_h)
 {
     cudaError_t err       = cudaSuccess;
     uint8_t* plainText_d  = NULL;
     uint8_t* cipherText_d = NULL;
     uint32_t* roundKeys_d = NULL;
     uint32_t plainTextBlockCnt;
+    uint8_t* iv_d = NULL;
 
     cudaEvent_t start, stop;
     float seconds = 0;
@@ -80,6 +119,15 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
         exit(EXIT_FAILURE);
     }
 
+    if (mode == CTR) {
+        err = cudaMalloc((void**)&iv_d, sizeof(uint8_t)*16);
+        if (err != cudaSuccess)
+        {
+            fprintf(stderr, "Failed to allocate device IV_d (error code %s)!\n", cudaGetErrorString(err));
+            exit(EXIT_FAILURE);
+        }
+    }
+
     /*** Copy Data from Host to Device memory ***/
     err = cudaMemcpy(plainText_d, plainText_h, plainTextSize_bytes, cudaMemcpyHostToDevice);
     if (err != cudaSuccess)
@@ -95,6 +143,18 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
         exit(EXIT_FAILURE);
     }
 
+    // generate a random IV to be used in CTR mode
+    if (mode == CTR) {
+        if (GetIV(iv_h) < 0) {
+            printf("Error getting IV!\n");
+            exit(EXIT_FAILURE);
+        }
+        err = cudaMemcpy(iv_d, iv_h, sizeof(uint8_t) * 16, cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "Failed to copy IV from host to device (error code %s)!\n", cudaGetErrorString(err));
+            exit(EXIT_FAILURE);
+        }
+    }
 
     plainTextBlockCnt = (plainTextSize_bytes + (BLOCK_SIZE_BITS / 8)-1) / (BLOCK_SIZE_BITS / 8);
 
@@ -103,7 +163,10 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
 
     cudaEventRecord(start);
-    naive_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
+    if (mode == CTR)
+        ctr_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
+    else
+        naive_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
     cudaEventRecord(stop);
 
     err = cudaGetLastError();
@@ -148,19 +211,28 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
         exit(EXIT_FAILURE);
     }
 
+    if (mode == CTR) {
+        err = cudaFree(iv_d);
+        if (err != cudaSuccess)
+        {
+            fprintf(stderr, "Failed to free device vector IV (error code %s)!\n", cudaGetErrorString(err));
+            exit(EXIT_FAILURE);
+        }
+    }
 
     // TODO: Do we reset the device here or only at the end of main?
 
     return err;
 }
 
-cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes)
+cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes, ModeOfOperation_t mode, uint8_t *iv_h)
 {
     cudaError_t err       = cudaSuccess;
     uint32_t* roundKeys_d = NULL;
     uint8_t* plainText_d  = NULL;
     uint8_t* cipherText_d = NULL;
     uint32_t plainTextBlockCnt;
+    uint8_t* iv_d = NULL;
 
     cudaEvent_t start, stop;
     float seconds = 0;
@@ -191,6 +263,14 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
         fprintf(stderr, "Failed to allocate device vector cipherText_d (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
+    if (mode == CTR) {
+        err = cudaMalloc((void**)&iv_d, sizeof(uint8_t)*16);
+        if (err != cudaSuccess)
+        {
+            fprintf(stderr, "Failed to allocate device IV_d (error code %s)!\n", cudaGetErrorString(err));
+            exit(EXIT_FAILURE);
+        }
+    }
 
     /*** Copy Data from Host to Device memory ***/
     err = cudaMemcpy(cipherText_d, cipherText_h, plainTextSize_bytes, cudaMemcpyHostToDevice);
@@ -207,6 +287,14 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
         exit(EXIT_FAILURE);
     }
 
+    if (mode == CTR) {
+        err = cudaMemcpy(iv_d, iv_h, sizeof(uint8_t) * 16, cudaMemcpyHostToDevice);
+        if (err != cudaSuccess)
+        {
+            fprintf(stderr, "Failed to copy IV from host to device (error code %s)!\n", cudaGetErrorString(err));
+            exit(EXIT_FAILURE);
+        }
+    }
 
     plainTextBlockCnt = (plainTextSize_bytes + (BLOCK_SIZE_BITS / 8)-1) / (BLOCK_SIZE_BITS / 8);
 
@@ -215,7 +303,10 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
 
     cudaEventRecord(start);
-    naive_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
+    if (mode == CTR)
+        ctr_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
+    else
+        naive_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
     cudaEventRecord(stop);
 
     err = cudaGetLastError();
@@ -260,13 +351,22 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
         exit(EXIT_FAILURE);
     }
 
+    if (mode == CTR) {
+        err = cudaFree(iv_d);
+        if (err != cudaSuccess)
+        {
+            fprintf(stderr, "Failed to free device vector IV (error code %s)!\n", cudaGetErrorString(err));
+            exit(EXIT_FAILURE);
+        }
+    }
 
     // TODO: Do we reset the device here or only at the end of main?
 
     return err;
 }
 
-/* arguments keySize, keyFile, plainTextFile */
+/* arguments keySize, keyFile, plainTextFile, mode*/
+/* mode is 0 for ECB, 1 for CTR */
 main( int argc, char **argv )
 {
     cudaError_t err = cudaSuccess;
@@ -280,16 +380,18 @@ main( int argc, char **argv )
     KeySize_Word_t keySize_words = AES128_KEYSIZE;
     NumRounds_t rounds = AES128_ROUNDS;
     AESVersion_t version = AES128_VERSION;
+    ModeOfOperation_t mode = ECB;
 
     uint8_t* en_plainText;
     uint8_t* de_plainText;
     uint8_t* plainText_verification;
     uint8_t* cipherText;
+    uint8_t *iv = (uint8_t*)calloc(sizeof(uint8_t) * 16, sizeof(uint8_t));
 
     bool verificationSuccessful = true;
 
 #ifdef USE_TEST_CODE
-
+    uint32_t appendedZeroCnt_bytes = 0;
 #else
     unsigned char* inFilekey;
     uint32_t expectedKeySize;
@@ -308,9 +410,9 @@ main( int argc, char **argv )
 #else
 
 
-        if(argc > 4)
+        if(argc > 5)
         {
-            fprintf(stderr, "Expecting at most 3 arguments: Keysize, KeyfilePath, PlainTextPath\n");
+            fprintf(stderr, "Expecting at most 4 arguments: Keysize, KeyfilePath, PlainTextPath, Mode\n");
         }
 
 
@@ -336,6 +438,20 @@ main( int argc, char **argv )
         {
             fprintf(stderr, "Invalid key size: %d\n", atoi(argv[KEY_SIZE_ARGUMENT_INDEX]));
         } 
+
+        if (argc == 5 && atoi(argv[MODE_INDEX]) == ECB) {
+            printf("ECB mode chosen.\n");
+            mode = ECB;
+        }
+        else if (argc == 5 && atoi(argv[MODE_INDEX]) == CTR) {
+            printf("CTR mode chosen.\n");
+            mode = CTR;
+        }
+        else if (argc == 5) fprintf(stderr, "Invalid mode: %d\n", atoi(argv[MODE_INDEX]));
+        else {
+            printf("No mode provided, defaulting to ECB\n");
+            mode = ECB;
+        }
 
         
         expectedKeySize = keySize_words*sizeof(uint32_t)*CHARS_PER_BYTE;
@@ -441,8 +557,7 @@ main( int argc, char **argv )
     }
     fprintf(stderr, "\n");
 #endif
-
-    err = AES_Encrypt(en_plainText, cipherText, roundKeys, rounds, plainTextSizeAligned_bytes);
+    err = AES_Encrypt(en_plainText, cipherText, roundKeys, rounds, plainTextSizeAligned_bytes, mode, iv);
 
 #if 0
     for(loopNdx=0; loopNdx<plainTextSizeAligned_bytes; loopNdx++)
@@ -452,7 +567,7 @@ main( int argc, char **argv )
     fprintf(stderr, "\n");
 #endif
 
-    err = AES_Decrypt(de_plainText, cipherText, roundKeys, rounds, plainTextSizeAligned_bytes);
+    err = AES_Decrypt(de_plainText, cipherText, roundKeys, rounds, plainTextSizeAligned_bytes, mode, iv);
 
 #if 0
     fprintf(stderr, "Verifications plainTextSize_bytes: %d\n", plainTextSize_bytes);
@@ -478,6 +593,7 @@ main( int argc, char **argv )
     /*** Free Host Memory ***/
     free(key);
     free(roundKeys);
+    free(iv);
 
 
     // TODO: What do we do with the data? (write to a file, compare against expected, return, etc) 

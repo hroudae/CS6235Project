@@ -24,8 +24,46 @@ __device__ void InvShiftRows(state_t* state);
 __device__ void InvMixColumns(state_t* state);
 
 
-// circular shift left: https://en.wikipedia.org/wiki/Circular_shift
+// Get random bytes from /dev/urandom 
+int GetIV(uint8_t *iv) {
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (f == NULL) { // couldn't open the file
+        perror("ERROR");
+        return -1;
+    }
+    else { // get 16 random bytes
+        int rd = fread(iv, 1, 16, f);
+        fclose(f);
+        if (rd < 16) {
+            perror("ERROR");
+            return -1;
+        }
+    }
+    return 0;
+}
 
+// Add the number to the 128 bit counter. the incremented number is in new_ctr
+__device__
+void incrementCounter(uint8_t *new_ctr, uint8_t *ctr, int inc) {
+    uint64_t high = ((uint64_t) ctr[0] << 56) | ((uint64_t) ctr[1] << 48) | 
+                    ((uint64_t) ctr[2] << 40) | ((uint64_t) ctr[3] << 32) |
+                    ((uint64_t) ctr[4] << 24) | ((uint64_t) ctr[5] << 16) | 
+                    ((uint64_t) ctr[6] << 8)  | ((uint64_t) ctr[7]);
+    uint64_t low  = ((uint64_t) ctr[8] << 56)  | ((uint64_t) ctr[9] << 48)  | 
+                    ((uint64_t) ctr[10] << 40) | ((uint64_t) ctr[11] << 32) |
+                    ((uint64_t) ctr[12] << 24) | ((uint64_t) ctr[13] << 16) | 
+                    ((uint64_t) ctr[14] << 8)  | ((uint64_t) ctr[15]);
+    uint64_t count = (uint64_t) inc;
+    uint64_t newlow = low + count;
+    if (newlow < low) high++;
+    int i, shift;
+    for (i = 0, shift = 56; i < 8; i++, shift -= 8) {
+        new_ctr[i] = (uint8_t) (high >> shift);
+        new_ctr[i+8] = (uint8_t) (newlow >> shift);
+    }
+}
+
+// circular shift left: https://en.wikipedia.org/wiki/Circular_shift
 uint32_t rotl32 (uint32_t value, unsigned int count) {
     const unsigned int mask = CHAR_BIT * sizeof(value) - 1;
     count &= mask;
