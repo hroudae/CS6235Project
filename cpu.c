@@ -49,6 +49,26 @@ void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* 
             for (j = 0; j < 16; j++)
                 *((cipherText+i*(BLOCK_SIZE_BITS / 8))+j) ^= *(plainText+i*(BLOCK_SIZE_BITS / 8)+j);
         }
+        if (mode == CBC) {
+            //Counter will be treated as Intrinsic Value to add to first block
+            //The rest of blocks will take prior block
+
+            //XOR Process of PlainText + Prior CipherText
+            for (j = 0; j < 16; j++){
+              if (i==0){ //First block uses IV
+                *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= counter[j]; //*((cipherText+i*(BLOCK_SIZE_BITS / 8))+j);
+              }
+              else { //Rest use prior CipherText
+                *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText+(i-1)*(BLOCK_SIZE_BITS / 8))+j);
+                //*((cipherText+i*(BLOCK_SIZE_BITS / 8))+j) ^= *(plainText+i*(BLOCK_SIZE_BITS / 8)+j);
+              }
+
+
+            }
+
+            AES_Encrypt_Block(plainText+i*(BLOCK_SIZE_BITS / 8), cipherText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
+        }
+
         else AES_Encrypt_Block(plainText+i*(BLOCK_SIZE_BITS / 8), cipherText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
     }
 }
@@ -91,7 +111,7 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
     }
 }
 
-// useful test vectors: 
+// useful test vectors:
 // http://citeseer.ist.psu.edu/viewdoc/download;jsessionid=B640BEEE8389FD7D024F4A5160E56EA4?doi=10.1.1.21.5680&rep=rep1&type=pdf
 // CTR mode test with NIST example vectors:
 // https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf
@@ -136,7 +156,7 @@ int main(int argc, char* argv[]) {
     //     printf("%02x", cipherText[i]);
     // }
     // printf("\n");
-    
+
     printf("iv: ");
     for (i = 0; i < 16; i++) {
         printf("%02x", iv[i]);
