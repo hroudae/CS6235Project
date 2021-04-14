@@ -140,6 +140,7 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     if (err != cudaSuccess)
     {
         fprintf(stderr, "Failed to copy vector roundKeys from host to device (error code %s)!\n", cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
     }
 
     // generate a random IV to be used in CTR mode
