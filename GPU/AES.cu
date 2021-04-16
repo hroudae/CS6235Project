@@ -23,8 +23,8 @@ naive_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKe
 
     if(i<numPlainTextBlocks)
     {
-        AES_Encrypt_Block(plainText_d  + i * (BLOCK_SIZE_BITS / 8), 
-                          cipherText_d + i * (BLOCK_SIZE_BITS / 8), 
+        AES_Encrypt_Block(plainText_d  + i * (BLOCK_SIZE_BITS / 8),
+                          cipherText_d + i * (BLOCK_SIZE_BITS / 8),
                           roundKeys_d, numRounds);
     }
 }
@@ -36,8 +36,8 @@ naive_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKe
 
     if(i<numPlainTextBlocks)
     {
-        AES_Decrypt_Block(cipherText_d + i * (BLOCK_SIZE_BITS / 8), 
-                          plainText_d  + i * (BLOCK_SIZE_BITS / 8), 
+        AES_Decrypt_Block(cipherText_d + i * (BLOCK_SIZE_BITS / 8),
+                          plainText_d  + i * (BLOCK_SIZE_BITS / 8),
                           roundKeys_d, numRounds);
     }
 
@@ -52,10 +52,10 @@ ctr_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
     {
         uint8_t ctr[16];
         incrementCounter(ctr, counter, i);
-        AES_Encrypt_Block(ctr, 
-                          cipherText_d + i * (BLOCK_SIZE_BITS / 8), 
+        AES_Encrypt_Block(ctr,
+                          cipherText_d + i * (BLOCK_SIZE_BITS / 8),
                           roundKeys_d, numRounds);
-        
+
         for (j = 0; j < 16; j++) {
             *((cipherText_d+i*(BLOCK_SIZE_BITS / 8))+j) ^= *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j);
         }
@@ -71,12 +71,42 @@ ctr_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
     {
         uint8_t ctr[16];
         incrementCounter(ctr, counter, i);
-        AES_Encrypt_Block(ctr, 
-            plainText_d + i * (BLOCK_SIZE_BITS / 8), 
+        AES_Encrypt_Block(ctr,
+            plainText_d + i * (BLOCK_SIZE_BITS / 8),
             roundKeys_d, numRounds);
 
         for (j = 0; j < 16; j++)
             *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+i*(BLOCK_SIZE_BITS / 8))+j);
+    }
+}
+
+//NOT TESTED
+__global__ void
+cbc_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks, uint8_t* counter) {
+    int i = blockDim.x*blockIdx.x + threadIdx.x;
+    int j;
+
+    int step = blockDim.x * blockDim.y * blockDim.z; // Should be 256 right now. Might need to mult by num blocks
+    int initial = 0; //Janky way to do first step. Theres prob a cleaner mod math way but /shrug
+
+    uint8_t ctr[16]; //Treating ctr as init vector. Moved up to avoid re-init
+    incrementCounter(ctr, counter, i); //toss some values in there
+
+    //Doesn't this process only happen once in other versions?
+    //Need as many threads as you have blocks of data
+    //Designing mine to assume that data blocks >>>> thread limit (1024 max)
+    //But current setup is 256 threads so gonna roll w/ that
+    while(i<numPlainTextBlocks)
+    {
+        if (initial != 0){ //Conditionals are bad in kernels aren't they. Wrapped to avoid doing 16 chex
+            for (j = 0; j < 16; j++) {
+                *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+(i-1)*(BLOCK_SIZE_BITS / 8))+j);
+            }
+        }
+      AES_Encrypt_Block(plainText_d+i*(BLOCK_SIZE_BITS / 8),
+                        cipherText_d+i*(BLOCK_SIZE_BITS / 8),
+                        roundKeys_d, numRounds);
+        i+= step;
     }
 }
 
@@ -185,7 +215,7 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
 
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&seconds, start, stop);
-    
+
     fprintf(stderr, "Encrypt Execution Time: %fs\n", seconds);
 
 
@@ -325,7 +355,7 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
 
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&seconds, start, stop);
-    
+
     fprintf(stderr, "Decrypt Execution Time: %fs\n", seconds);
 
 
@@ -437,7 +467,7 @@ main( int argc, char **argv )
         else
         {
             fprintf(stderr, "Invalid key size: %d\n", atoi(argv[KEY_SIZE_ARGUMENT_INDEX]));
-        } 
+        }
 
         if (argc == 5 && atoi(argv[MODE_INDEX]) == ECB) {
             printf("ECB mode chosen.\n");
@@ -453,7 +483,7 @@ main( int argc, char **argv )
             mode = ECB;
         }
 
-        
+
         expectedKeySize = keySize_words*sizeof(uint32_t)*CHARS_PER_BYTE;
 
         numCharRead = readfile(argv[KEY_FP_INDEX], &inFilekey, expectedKeySize);
@@ -466,7 +496,7 @@ main( int argc, char **argv )
         {
             fprintf(stderr, "Read %d bytes from input key file\n", numCharRead/CHARS_PER_BYTE);
         }
-        
+
 
         plainTextSize_bytes = readfile(argv[PLAIN_TEXT_FP_INDEX], &inputPlainText, 16777216);
         if (plainTextSize_bytes < 1)
@@ -518,10 +548,10 @@ main( int argc, char **argv )
     cipherText = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
 
 #ifdef USE_TEST_CODE
-    uint32_t sample256Key[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f, 
+    uint32_t sample256Key[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f,
                                 0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f};
 
-    uint8_t sampleDataBlock[16] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 
+    uint8_t sampleDataBlock[16] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
                                    0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
 
     memcpy((void*)key, (void*)sample256Key, sizeof(uint32_t*)*keySize_words);
@@ -530,7 +560,7 @@ main( int argc, char **argv )
 
 #else
     // TODO: copy supplied key file into key
-    /*uint32_t inputKey[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f, 
+    /*uint32_t inputKey[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f,
                                 0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f};*/
 
     getDecKeyfromAsciiKey((char*)inFilekey, key, keySize_words);
@@ -578,7 +608,7 @@ main( int argc, char **argv )
     {
         if(de_plainText[loopNdx] != plainText_verification[loopNdx])
         {
-            fprintf(stderr, "Verification Failed at index %d! %02x!=%02x\n", 
+            fprintf(stderr, "Verification Failed at index %d! %02x!=%02x\n",
                 loopNdx, de_plainText[loopNdx], plainText_verification[loopNdx]);
 
             verificationSuccessful = false;
@@ -596,7 +626,7 @@ main( int argc, char **argv )
     free(iv);
 
 
-    // TODO: What do we do with the data? (write to a file, compare against expected, return, etc) 
+    // TODO: What do we do with the data? (write to a file, compare against expected, return, etc)
 
     err = cudaDeviceReset();
     if (err != cudaSuccess)
@@ -605,5 +635,5 @@ main( int argc, char **argv )
         exit(EXIT_FAILURE);
     }
 
-    fprintf(stderr, "AES Execution Completed\n"); 
+    fprintf(stderr, "AES Execution Completed\n");
 }

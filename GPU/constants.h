@@ -37,7 +37,8 @@ typedef enum {
 // Mode of operations
 typedef enum {
     ECB,        // electronic codebook mode - not secure
-    CTR         // counter mode
+    CTR,         // counter mode
+    CBC         //Cipher Block Chaining
 } ModeOfOperation_t;
 
 typedef uint8_t state_t[4][4];
