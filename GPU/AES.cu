@@ -103,6 +103,15 @@ cbc_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
                 *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+(i-step)*(BLOCK_SIZE_BITS / 8))+j);
             }
         }
+        else {
+          initial = 1;
+
+          for (j = 0; j<16; j++)
+            *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= counter[j]; //*((cipherText+i*(BLOCK_SIZE_BITS / 8))+j);
+
+          //Gotta do stuff with IV
+          //TO DO
+        }
       AES_Encrypt_Block(plainText_d+i*(BLOCK_SIZE_BITS / 8),
                         cipherText_d+i*(BLOCK_SIZE_BITS / 8),
                         roundKeys_d, numRounds);
@@ -120,18 +129,24 @@ cbc_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
     uint8_t ctr[16]; //Treating ctr as init vector. Moved up to avoid re-init
     incrementCounter(ctr, counter, i); //toss some values in there
 
-    if(i<numPlainTextBlocks)
+    while(i<numPlainTextBlocks)
     {
-
-        uint8_t ctr[16];
-        incrementCounter(ctr, counter, i);
-        AES_Encrypt_Block(ctr,
+        AES_Decrypt_Block(cipherText_d+i*(BLOCK_SIZE_BITS / 8),
             plainText_d + i * (BLOCK_SIZE_BITS / 8),
             roundKeys_d, numRounds);
+        if (initial != 0){ //Conditionals are bad in kernels aren't they. Wrapped to avoid doing 16 chex
+            for (j = 0; j < 16; j++) {
+                *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+(i-step)*(BLOCK_SIZE_BITS / 8))+j);
+            }
+        }
+        else {
+          initial = 1;
+          for (j = 0; j < 16; j++)
+              *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= ctr[j];
+        }
 
-        for (j = 0; j < 16; j++)
-            *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+i*(BLOCK_SIZE_BITS / 8))+j);
     }
+    i+=step
 }
 
 static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes, ModeOfOperation_t mode, uint8_t *iv_h)
