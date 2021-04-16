@@ -113,17 +113,14 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
           // for (i = 0; i < 16; i++) cipherStorage[i] = cipherText[i]; //Unsure if this will idx properly
           //Modifies plaintext in place
           AES_Decrypt_Block(cipherText+i*(BLOCK_SIZE_BITS / 8), plainText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
-
           if (i == 0){ //special first case
               for (j = 0; j < 16; j++){
                 *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= counter[j];
-
               }
           }
           else {
               for (j = 0; j < 16; j++){
                 *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText+(i-1)*(BLOCK_SIZE_BITS / 8))+j);
-
               }
           }
         }
