@@ -100,13 +100,37 @@ cbc_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
     {
         if (initial != 0){ //Conditionals are bad in kernels aren't they. Wrapped to avoid doing 16 chex
             for (j = 0; j < 16; j++) {
-                *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+(i-1)*(BLOCK_SIZE_BITS / 8))+j);
+                *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+(i-step)*(BLOCK_SIZE_BITS / 8))+j);
             }
         }
       AES_Encrypt_Block(plainText_d+i*(BLOCK_SIZE_BITS / 8),
                         cipherText_d+i*(BLOCK_SIZE_BITS / 8),
                         roundKeys_d, numRounds);
         i+= step;
+    }
+}
+
+__global__ void
+cbc_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks, uint8_t* counter) {
+    int i = blockDim.x*blockIdx.x + threadIdx.x;
+    int j;
+    int step = blockDim.x * blockDim.y * blockDim.z; // Should be 256 right now. Might need to mult by num blocks
+    int initial = 0; //Janky way to do first step. Theres prob a cleaner mod math way but /shrug
+
+    uint8_t ctr[16]; //Treating ctr as init vector. Moved up to avoid re-init
+    incrementCounter(ctr, counter, i); //toss some values in there
+
+    if(i<numPlainTextBlocks)
+    {
+
+        uint8_t ctr[16];
+        incrementCounter(ctr, counter, i);
+        AES_Encrypt_Block(ctr,
+            plainText_d + i * (BLOCK_SIZE_BITS / 8),
+            roundKeys_d, numRounds);
+
+        for (j = 0; j < 16; j++)
+            *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+i*(BLOCK_SIZE_BITS / 8))+j);
     }
 }
 

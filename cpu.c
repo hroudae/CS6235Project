@@ -115,11 +115,16 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
           AES_Decrypt_Block(cipherText+i*(BLOCK_SIZE_BITS / 8), plainText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
 
           if (i == 0){ //special first case
-            *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= counter[j];
+              for (j = 0; j < 16; j++){
+                *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= counter[j];
+
+              }
           }
           else {
-            *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText+(i-1)*(BLOCK_SIZE_BITS / 8))+j);
+              for (j = 0; j < 16; j++){
+                *(plainText+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText+(i-1)*(BLOCK_SIZE_BITS / 8))+j);
 
+              }
           }
         }
         else AES_Decrypt_Block(cipherText+i*(BLOCK_SIZE_BITS / 8), plainText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
@@ -133,7 +138,7 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
 int main(int argc, char* argv[]) {
     AESVersion_t version = AES256_VERSION;
     NumRounds_t rounds = AES256_ROUNDS;
-    ModeOfOperation_t mode = CTR;
+    ModeOfOperation_t mode = CBC;
 
     uint32_t key[8] = {0x603deb10, 0x15ca71be, 0x2b73aef0, 0x857d7781, 0x1f352c07, 0x3b6108d7, 0x2d9810a3, 0x0914dff4};
     uint32_t *roundKeys = malloc(sizeof(uint32_t) * (4*rounds));
@@ -161,14 +166,30 @@ int main(int argc, char* argv[]) {
     unsigned char *cipherText =  malloc(fsize + 1);
     unsigned char *decryptPlainText =  malloc(fsize + 1);
 
-    // for (i = 0; i < fsize; i++) {
-    //     printf("%02x", string[i]);
-    // }
-    // printf("\n");
+    unsigned char *plainCopy = malloc(fsize+1);
+    memcpy(plainCopy, string, fsize+1);
+
+
+    printf("\nOriginal String:");
+    for (i = 0; i < fsize; i++) {
+        printf("%02x", string[i]);
+    }
+    printf("\n");
+
     uint8_t *iv = malloc(16*sizeof(uint8_t));
     AES_Encrypt(string, cipherText, roundKeys, version, fsize, mode, iv);
+
+
+
+    printf("\nCipherText (After Encry): ");
     for (i = 0; i < fsize; i++) {
         printf("%02x", cipherText[i]);
+    }
+    printf("\n");
+
+    printf("\nPlainTxt (After Encry): ");
+    for (i = 0; i < fsize; i++) {
+        printf("%02x", string[i]);
     }
     printf("\n");
 
@@ -179,9 +200,18 @@ int main(int argc, char* argv[]) {
     printf("\n");
 
     AES_Decrypt(cipherText, decryptPlainText, roundKeys, version, fsize, mode, iv);
+
+    printf("\nPlainText (After Decrypt):");
     for (i = 0; i < fsize; i++) {
         printf("%02x", decryptPlainText[i]);
-        if (decryptPlainText[i] != string[i]) printf("\nERROR: %02x %02x\n", decryptPlainText[i], string[i]);
+    }
+    printf("\n");
+
+    //CBC Notes - Altering passed in plaintext is changing the string we compare to
+    //Must copy or something
+
+    for (i = 0; i < fsize; i++) {
+        if (decryptPlainText[i] != plainCopy[i]) printf("\nERROR: %02x %02x\n", decryptPlainText[i], string[i]);
     }
     printf("\n");
     // printf("%s\n", string);
