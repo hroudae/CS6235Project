@@ -435,7 +435,7 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
 }
 
 /* arguments keySize, keyFile, plainTextFile, mode*/
-/* mode is 0 for ECB, 1 for CTR */
+/* mode is 0 for ECB, 1 for CTR, 2 CBC */
 main( int argc, char **argv )
 {
     cudaError_t err = cudaSuccess;
@@ -449,7 +449,7 @@ main( int argc, char **argv )
     KeySize_Word_t keySize_words = AES128_KEYSIZE;
     NumRounds_t rounds = AES128_ROUNDS;
     AESVersion_t version = AES128_VERSION;
-    ModeOfOperation_t mode = ECB;
+    ModeOfOperation_t mode = CBC;
 
     uint8_t* en_plainText;
     uint8_t* de_plainText;
@@ -515,6 +515,10 @@ main( int argc, char **argv )
         else if (argc == 5 && atoi(argv[MODE_INDEX]) == CTR) {
             printf("CTR mode chosen.\n");
             mode = CTR;
+        }
+        else if (argc == 5 && atoi(argv[MODE_INDEX]) == CBC) {
+            printf("CTR mode chosen.\n");
+            mode = CBC;
         }
         else if (argc == 5) fprintf(stderr, "Invalid mode: %d\n", atoi(argv[MODE_INDEX]));
         else {
