@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include<time.h>
+#include <time.h>
 
 #include "AES_lib.h"
 #include "constants.h"
@@ -149,17 +149,17 @@ int main(int argc, char* argv[]) {
     }
     printf("\n");
 
-    // unsigned char *string;
-    // int fsize = 0;
-    // if ((fsize = readfile("2701-0.txt", &string, 10485760)) < 1) {
-    //     printf("ERROR reading input file.\n");
-    //     return 1;
-    // }
-    unsigned char string[64] = {0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96, 0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a,
-    0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03, 0xac, 0x9c, 0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51,
-    0x30, 0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11, 0xe5, 0xfb, 0xc1, 0x19, 0x1a, 0x0a, 0x52, 0xef,
-    0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b, 0x17, 0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10};
-    int fsize = 64;
+    unsigned char *string;
+    int fsize = 0;
+    if ((fsize = readfile("2701-0.txt", &string, 10485760)) < 1) {
+        printf("ERROR reading input file.\n");
+        return 1;
+    }
+    // unsigned char string[64] = {0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96, 0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a,
+    // 0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03, 0xac, 0x9c, 0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51,
+    // 0x30, 0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11, 0xe5, 0xfb, 0xc1, 0x19, 0x1a, 0x0a, 0x52, 0xef,
+    // 0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b, 0x17, 0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10};
+    // int fsize = 64;
     unsigned char *cipherText =  malloc(fsize + 1);
     unsigned char *decryptPlainText =  malloc(fsize + 1);
 
@@ -167,42 +167,47 @@ int main(int argc, char* argv[]) {
     memcpy(plainCopy, string, fsize+1);
 
 
-    printf("\nOriginal String:");
-    for (i = 0; i < fsize; i++) {
-        printf("%02x", string[i]);
-    }
-    printf("\n");
+    // printf("\nOriginal String:");
+    // for (i = 0; i < fsize; i++) {
+    //     printf("%02x", string[i]);
+    // }
+    // printf("\n");
 
     uint8_t *iv = malloc(16*sizeof(uint8_t));
+    clock_t start = clock(), time_encrypt;
     AES_Encrypt(string, cipherText, roundKeys, version, fsize, mode, iv);
+    time_encrypt = clock() - start;
 
 
 
-    printf("\nCipherText (After Encry): ");
-    for (i = 0; i < fsize; i++) {
-        printf("%02x", cipherText[i]);
-    }
-    printf("\n");
+    // printf("\nCipherText (After Encry): ");
+    // for (i = 0; i < fsize; i++) {
+    //     printf("%02x", cipherText[i]);
+    // }
+    // printf("\n");
 
-    printf("\nPlainTxt (After Encry): ");
-    for (i = 0; i < fsize; i++) {
-        printf("%02x", string[i]);
-    }
-    printf("\n");
+    // printf("\nPlainTxt (After Encry): ");
+    // for (i = 0; i < fsize; i++) {
+    //     printf("%02x", string[i]);
+    // }
+    // printf("\n");
 
-    printf("iv: ");
-    for (i = 0; i < 16; i++) {
-        printf("%02x", iv[i]);
-    }
-    printf("\n");
+    // printf("iv: ");
+    // for (i = 0; i < 16; i++) {
+    //     printf("%02x", iv[i]);
+    // }
+    // printf("\n");
 
+    clock_t time_decrypt;
+    start = clock();
     AES_Decrypt(cipherText, decryptPlainText, roundKeys, version, fsize, mode, iv);
+    time_decrypt = clock() - start;
 
-    printf("\nPlainText (After Decrypt):");
-    for (i = 0; i < fsize; i++) {
-        printf("%02x", decryptPlainText[i]);
-    }
-    printf("\n");
+    // printf("\nPlainText (After Decrypt):");
+    // for (i = 0; i < fsize; i++) {
+    //     printf("%02x", decryptPlainText[i]);
+    // }
+    // printf("\n");
 
     //CBC Notes - Altering passed in plaintext is changing the string we compare to
     //Must copy or something
@@ -213,10 +218,13 @@ int main(int argc, char* argv[]) {
     printf("\n");
     // printf("%s\n", string);
 
-    // free(string);
-    // free(cipherText);
-    // free(decryptPlainText);
-    // free(iv);
+    free(string);
+    free(cipherText);
+    free(decryptPlainText);
+    free(iv);
+
+    printf("Encrypt Execution Time: %lfs\n", (double)time_encrypt / CLOCKS_PER_SEC);
+    printf("Decrypt Execution Time: %lfs\n", (double)time_decrypt / CLOCKS_PER_SEC);
 
     return 0;
 }
