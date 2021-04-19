@@ -146,7 +146,7 @@ cbc_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
         }
 
     }
-    i+=step
+    i+=step;
 }
 
 static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes, ModeOfOperation_t mode, uint8_t *iv_h)
