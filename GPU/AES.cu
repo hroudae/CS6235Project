@@ -255,7 +255,7 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&seconds, start, stop);
 
-    fprintf(stderr, "Encrypt Execution Time: %fs\n", seconds);
+    fprintf(stderr, "Encrypt Execution Time: %fms\n", seconds);
 
 
     /*** Free Device Mem ***/
@@ -395,7 +395,7 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&seconds, start, stop);
 
-    fprintf(stderr, "Decrypt Execution Time: %fs\n", seconds);
+    fprintf(stderr, "Decrypt Execution Time: %fms\n", seconds);
 
 
     /*** Free Device Mem ***/
@@ -541,7 +541,7 @@ main( int argc, char **argv )
         }
 
 
-        plainTextSize_bytes = readfile(argv[PLAIN_TEXT_FP_INDEX], &inputPlainText, 16777216);
+        plainTextSize_bytes = readfile(argv[PLAIN_TEXT_FP_INDEX], &inputPlainText, 1073741824);
         if (plainTextSize_bytes < 1)
         {
             fprintf(stderr, "ERROR reading plainText file\n");
