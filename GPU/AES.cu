@@ -580,7 +580,8 @@ main( int argc, char **argv )
     plainTextSize_bytes = 16;
 #endif
 
-    appendedZeroCnt_bytes = BLOCK_SIZE_BITS - plainTextSize_bytes%BLOCK_SIZE_BITS;
+    if ((plainTextSize_bytes*8)%BLOCK_SIZE_BITS)
+        appendedZeroCnt_bytes = (BLOCK_SIZE_BITS - (plainTextSize_bytes*8)%BLOCK_SIZE_BITS) / 8;
     plainTextSizeAligned_bytes = plainTextSize_bytes + appendedZeroCnt_bytes;
 
     key = (uint32_t*)calloc(sizeof(uint32_t*) * keySize_words, sizeof(uint32_t));
