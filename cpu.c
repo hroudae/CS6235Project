@@ -9,7 +9,14 @@
 #include "constants.h"
 #include "fileio.h"
 
-// TODO: need to return IV somehow
+#define KEY_SIZE_ARGUMENT_INDEX     1
+#define KEY_FP_INDEX                2
+#define PLAIN_TEXT_FP_INDEX         3
+#define MODE_INDEX                  4
+
+#define CHARS_PER_BYTE              2
+
+
 void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* roundKeys, AESVersion_t vers, int charCount, ModeOfOperation_t mode, uint8_t *iv) {
     unsigned int numround = 0;
     uint8_t counter[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -67,7 +74,6 @@ void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* 
         }
 
         else {
-         printf("ECB\n");
          AES_Encrypt_Block(plainText+i*(BLOCK_SIZE_BITS / 8), cipherText+i*(BLOCK_SIZE_BITS / 8), roundKeys, numround);
         }
     }
@@ -133,62 +139,175 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
 // CTR mode test with NIST example vectors:
 // https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf
 int main(int argc, char* argv[]) {
-    AESVersion_t version = AES256_VERSION;
-    NumRounds_t rounds = AES256_ROUNDS;
-    ModeOfOperation_t mode = CBC;
+    int USE_TEST_CODE = 0;
+    int i;
 
-    uint32_t key[8] = {0x603deb10, 0x15ca71be, 0x2b73aef0, 0x857d7781, 0x1f352c07, 0x3b6108d7, 0x2d9810a3, 0x0914dff4};
-    uint32_t *roundKeys = malloc(sizeof(uint32_t) * (4*rounds));
+    uint32_t plainTextSize_bytes = 0;
+    uint32_t plainTextSizeAligned_bytes = 0;
+    uint32_t loopNdx;
+
+    uint32_t* key;
+    uint32_t* roundKeys;
+
+    KeySize_Word_t keySize_words = AES128_KEYSIZE;
+    NumRounds_t rounds = AES128_ROUNDS;
+    AESVersion_t version = AES128_VERSION;
+    ModeOfOperation_t mode = ECB;
+
+    uint8_t* en_plainText;
+    uint8_t* de_plainText;
+    uint8_t* plainText_verification;
+    uint8_t* cipherText;
+    uint8_t *iv = (uint8_t*)calloc(sizeof(uint8_t) * 16, sizeof(uint8_t));
+
+    int verificationSuccessful = 1;
+
+    unsigned char* inFilekey;
+    uint32_t expectedKeySize;
+    unsigned char* inputPlainText;
+    uint32_t numCharRead = 0;
+    uint32_t appendedZeroCnt_bytes = 0;
+
+
+    if(argc > 1)
+    {
+        if(argc > 5)
+        {
+            fprintf(stderr, "Expecting at most 4 arguments: Keysize, KeyfilePath, PlainTextPath, Mode\n");
+        }
+
+        if(atoi(argv[KEY_SIZE_ARGUMENT_INDEX]) == BIT_KEY_128)
+        {
+            keySize_words = AES128_KEYSIZE;
+            rounds        = AES128_ROUNDS;
+            version       = AES128_VERSION;
+        }
+        else if(atoi(argv[KEY_SIZE_ARGUMENT_INDEX]) == BIT_KEY_192)
+        {
+            keySize_words = AES192_KEYSIZE;
+            rounds        = AES192_ROUNDS;
+            version       = AES192_VERSION;
+        }
+        else if(atoi(argv[KEY_SIZE_ARGUMENT_INDEX]) == BIT_KEY_256)
+        {
+            keySize_words = AES256_KEYSIZE;
+            rounds        = AES256_ROUNDS;
+            version       = AES256_VERSION;
+        }
+        else
+        {
+            fprintf(stderr, "Invalid key size: %d\n", atoi(argv[KEY_SIZE_ARGUMENT_INDEX]));
+        }
+
+        if (argc == 5 && atoi(argv[MODE_INDEX]) == ECB) {
+            printf("ECB mode chosen.\n");
+            mode = ECB;
+        }
+        else if (argc == 5 && atoi(argv[MODE_INDEX]) == CTR) {
+            printf("CTR mode chosen.\n");
+            mode = CTR;
+        }
+        else if (argc == 5 && atoi(argv[MODE_INDEX]) == CBC) {
+            printf("CTR mode chosen.\n");
+            mode = CBC;
+        }
+        else if (argc == 5) fprintf(stderr, "Invalid mode: %d\n", atoi(argv[MODE_INDEX]));
+        else {
+            printf("No mode provided, defaulting to ECB\n");
+            mode = ECB;
+        }
+
+
+        expectedKeySize = keySize_words*sizeof(uint32_t)*CHARS_PER_BYTE;
+
+        numCharRead = readfile(argv[KEY_FP_INDEX], &inFilekey, expectedKeySize);
+        if (numCharRead < 1 || numCharRead != expectedKeySize)
+        {
+            fprintf(stderr, "ERROR reading key file with size: %d\n", numCharRead);
+            return 1;
+        }
+        else
+        {
+            fprintf(stderr, "Read %d bytes from input key file\n", numCharRead/CHARS_PER_BYTE);
+        }
+
+
+        plainTextSize_bytes = readfile(argv[PLAIN_TEXT_FP_INDEX], &inputPlainText, 1073741824);
+        if (plainTextSize_bytes < 1)
+        {
+            fprintf(stderr, "ERROR reading plainText file\n");
+            return 1;
+        }
+        else
+        {
+            fprintf(stderr, "Read %d bytes from input plain text file\n", plainTextSize_bytes);
+        }
+
+        fprintf(stderr, "\n");
+    }
+    else
+    {
+        fprintf(stderr, "Using hardcoded test: 1 block and 256 bit key\n");
+        USE_TEST_CODE = 1;
+    }
+
+
+    if (USE_TEST_CODE) {
+        keySize_words       = AES256_KEYSIZE;
+        rounds              = AES256_ROUNDS;
+        plainTextSize_bytes = 17;
+    }
+
+    if ((plainTextSize_bytes*8)%BLOCK_SIZE_BITS)
+        appendedZeroCnt_bytes = (BLOCK_SIZE_BITS - (plainTextSize_bytes*8)%BLOCK_SIZE_BITS) / 8;
+    plainTextSizeAligned_bytes = plainTextSize_bytes + appendedZeroCnt_bytes;
+
+    key = (uint32_t*)calloc(sizeof(uint32_t*) * keySize_words, sizeof(uint32_t));
+    roundKeys = (uint32_t*)calloc(sizeof(uint32_t*) * rounds * 4, sizeof(uint32_t));
+    en_plainText = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
+    de_plainText = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
+    plainText_verification = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
+    cipherText = (unsigned char*)calloc(sizeof(unsigned char) * plainTextSizeAligned_bytes, sizeof(uint8_t));
+
+    if (USE_TEST_CODE) {
+        uint32_t sample256Key[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f,
+                                0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f};
+
+        uint8_t sampleDataBlock[17] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                                   0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x69};
+
+        memcpy((void*)key, (void*)sample256Key, sizeof(uint32_t*)*keySize_words);
+        memcpy((void*)en_plainText, (void*)sampleDataBlock, plainTextSize_bytes);
+        memcpy((void*)plainText_verification, (void*)sampleDataBlock, plainTextSize_bytes);
+    }
+
+    else {
+        // TODO: copy supplied key file into key
+        /*uint32_t inputKey[8] = {0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f,
+                                0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f};*/
+
+        getDecKeyfromAsciiKey((char*)inFilekey, key, keySize_words);
+        memcpy((void*)en_plainText, (void*)inputPlainText, plainTextSize_bytes);
+        memcpy((void*)plainText_verification, (void*)inputPlainText, plainTextSize_bytes);
+    }
 
     KeyExpansion(key, roundKeys, version);
 
-    int i;
-    for (i = 0; i < 4*rounds; i++) {
-        printf("%08x", roundKeys[i]);
-        if ((i+1) % 4 == 0) printf("\n");
-    }
-    printf("\n");
-
-    unsigned char *string;
-    int fsize = 0;
-    if ((fsize = readfile("2701-0.txt", &string, 10485760)) < 1) {
-        printf("ERROR reading input file.\n");
-        return 1;
-    }
-    // unsigned char string[64] = {0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96, 0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a,
-    // 0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03, 0xac, 0x9c, 0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51,
-    // 0x30, 0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11, 0xe5, 0xfb, 0xc1, 0x19, 0x1a, 0x0a, 0x52, 0xef,
-    // 0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b, 0x17, 0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10};
-    // int fsize = 64;
-    unsigned char *cipherText =  malloc(fsize + 1);
-    unsigned char *decryptPlainText =  malloc(fsize + 1);
-
-    unsigned char *plainCopy = malloc(fsize+1);
-    memcpy(plainCopy, string, fsize+1);
-
-
-    // printf("\nOriginal String:");
-    // for (i = 0; i < fsize; i++) {
-    //     printf("%02x", string[i]);
-    // }
-    // printf("\n");
-
-    uint8_t *iv = malloc(16*sizeof(uint8_t));
-    clock_t start = clock(), time_encrypt;
-    AES_Encrypt(string, cipherText, roundKeys, version, fsize, mode, iv);
-    time_encrypt = clock() - start;
-
-
+    struct timespec  tv1, tv2;
+    clock_gettime(CLOCK_MONOTONIC, &tv1);
+    AES_Encrypt(en_plainText, cipherText, roundKeys, version, plainTextSizeAligned_bytes, mode, iv);
+    clock_gettime(CLOCK_MONOTONIC, &tv2);
+    double time_encrypt = ((double) (tv2.tv_nsec - tv1.tv_nsec) / 1000000 + (double) (tv2.tv_sec - tv1.tv_sec)) * 1000;
 
     // printf("\nCipherText (After Encry): ");
-    // for (i = 0; i < fsize; i++) {
+    // for (i = 0; i < plainTextSizeAligned_bytes; i++) {
     //     printf("%02x", cipherText[i]);
     // }
     // printf("\n");
 
     // printf("\nPlainTxt (After Encry): ");
-    // for (i = 0; i < fsize; i++) {
-    //     printf("%02x", string[i]);
+    // for (i = 0; i < plainTextSizeAligned_bytes; i++) {
+    //     printf("%02x", plainText_verification[i]);
     // }
     // printf("\n");
 
@@ -198,33 +317,38 @@ int main(int argc, char* argv[]) {
     // }
     // printf("\n");
 
-    clock_t time_decrypt;
-    start = clock();
-    AES_Decrypt(cipherText, decryptPlainText, roundKeys, version, fsize, mode, iv);
-    time_decrypt = clock() - start;
+    clock_gettime(CLOCK_MONOTONIC, &tv1);
+    AES_Decrypt(cipherText, de_plainText, roundKeys, version, plainTextSizeAligned_bytes, mode, iv);
+    clock_gettime(CLOCK_MONOTONIC, &tv2);
+    double time_decrypt = ((double) (tv2.tv_nsec - tv1.tv_nsec) / 1000000 + (double) (tv2.tv_sec - tv1.tv_sec)) * 1000;
 
     // printf("\nPlainText (After Decrypt):");
-    // for (i = 0; i < fsize; i++) {
-    //     printf("%02x", decryptPlainText[i]);
+    // for (i = 0; i < plainTextSizeAligned_bytes; i++) {
+    //     printf("%02x", de_plainText[i]);
     // }
     // printf("\n");
+    
 
     //CBC Notes - Altering passed in plaintext is changing the string we compare to
     //Must copy or something
 
-    for (i = 0; i < fsize; i++) {
-        if (decryptPlainText[i] != plainCopy[i]) printf("\nERROR: %02x %02x\n", decryptPlainText[i], string[i]);
+    for (i = 0; i < plainTextSizeAligned_bytes; i++) {
+        if (de_plainText[i] != plainText_verification[i]) {
+            printf("\nERROR: %02x %02x\n", de_plainText[i], plainText_verification[i]);
+            verificationSuccessful = 0;
+        }
     }
     printf("\n");
     // printf("%s\n", string);
 
-    free(string);
-    free(cipherText);
-    free(decryptPlainText);
+    if (verificationSuccessful) fprintf(stderr, "\nVerification successful\n");
+
+    free(key);
+    free(roundKeys);
     free(iv);
 
-    printf("Encrypt Execution Time: %lfs\n", (double)time_encrypt / CLOCKS_PER_SEC);
-    printf("Decrypt Execution Time: %lfs\n", (double)time_decrypt / CLOCKS_PER_SEC);
+    printf("Encrypt Execution Time: %lfms\n", time_encrypt);
+    printf("Decrypt Execution Time: %lfms\n", time_decrypt);
 
     return 0;
 }

@@ -295,3 +295,17 @@ void AES_Decrypt_Block(unsigned char* cipherText, unsigned char* plainText, uint
             plainText[d] = (uint8_t) state[j][i];
         }
 }
+
+void getDecKeyfromAsciiKey(char* asciiKey, uint32_t* decimalKey, uint32_t keyLength_words)
+{
+   char word[NUM_CHARS_IN_WORD];
+
+   int i;
+   for(i = 0; i < keyLength_words; i++)
+   {
+        strncpy(word, asciiKey+(i*NUM_CHARS_IN_WORD), NUM_CHARS_IN_WORD);
+        decimalKey[i] = (uint32_t)strtoul(word, NULL, BASE_HEX);
+   }
+
+   return;
+}
