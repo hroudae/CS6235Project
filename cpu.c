@@ -293,11 +293,11 @@ int main(int argc, char* argv[]) {
 
     KeyExpansion(key, roundKeys, version);
 
-    struct timespec  tv1, tv2;
-    clock_gettime(CLOCK_MONOTONIC, &tv1);
+    struct timespec  begin, end;
+    clock_gettime(CLOCK_MONOTONIC, &begin);
     AES_Encrypt(en_plainText, cipherText, roundKeys, version, plainTextSizeAligned_bytes, mode, iv);
-    clock_gettime(CLOCK_MONOTONIC, &tv2);
-    double time_encrypt = ((double) (tv2.tv_nsec - tv1.tv_nsec) / 1000000 + (double) (tv2.tv_sec - tv1.tv_sec)) * 1000;
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double time_encrypt = ((double) (end.tv_nsec - begin.tv_nsec) / 1000000000.0 + (double) (end.tv_sec - begin.tv_sec)) * 1000.0;
 
     // printf("\nCipherText (After Encry): ");
     // for (i = 0; i < plainTextSizeAligned_bytes; i++) {
@@ -317,10 +317,10 @@ int main(int argc, char* argv[]) {
     // }
     // printf("\n");
 
-    clock_gettime(CLOCK_MONOTONIC, &tv1);
+    clock_gettime(CLOCK_MONOTONIC, &begin);
     AES_Decrypt(cipherText, de_plainText, roundKeys, version, plainTextSizeAligned_bytes, mode, iv);
-    clock_gettime(CLOCK_MONOTONIC, &tv2);
-    double time_decrypt = ((double) (tv2.tv_nsec - tv1.tv_nsec) / 1000000 + (double) (tv2.tv_sec - tv1.tv_sec)) * 1000;
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double time_decrypt = ((double) (end.tv_nsec - begin.tv_nsec) / 1000000000.0 + (double) (end.tv_sec - begin.tv_sec)) * 1000.0;
 
     // printf("\nPlainText (After Decrypt):");
     // for (i = 0; i < plainTextSizeAligned_bytes; i++) {
