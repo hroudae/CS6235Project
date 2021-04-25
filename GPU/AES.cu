@@ -144,9 +144,9 @@ cbc_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
           for (j = 0; j < 16; j++)
               *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= ctr[j];
         }
+        i+=step;
 
     }
-    i+=step;
 }
 
 static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* roundKeys_h, NumRounds_t numRounds, uint32_t plainTextSize_bytes, ModeOfOperation_t mode, uint8_t *iv_h)
@@ -517,7 +517,7 @@ main( int argc, char **argv )
             mode = CTR;
         }
         else if (argc == 5 && atoi(argv[MODE_INDEX]) == CBC) {
-            printf("CTR mode chosen.\n");
+            printf("CBC mode chosen.\n");
             mode = CBC;
         }
         else if (argc == 5) fprintf(stderr, "Invalid mode: %d\n", atoi(argv[MODE_INDEX]));
