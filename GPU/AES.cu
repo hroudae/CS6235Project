@@ -105,9 +105,9 @@ cbc_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
         }
         else {
           initial = 1;
-
+        
           for (j = 0; j<16; j++)
-            *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= counter[j]; //*((cipherText+i*(BLOCK_SIZE_BITS / 8))+j);
+            *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= ctr[j]; //*((cipherText+i*(BLOCK_SIZE_BITS / 8))+j);
 
           //Gotta do stuff with IV
           //TO DO
@@ -145,7 +145,6 @@ cbc_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
               *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= ctr[j];
         }
         i+=step;
-
     }
 }
 
