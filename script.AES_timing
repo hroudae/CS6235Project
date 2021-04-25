@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --account=soc-gpu-kp
+#SBATCH --partition=soc-gpu-kp
+#SBATCH --job-name=cs6235
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --gres=gpu:p100:1
+#SBATCH --mem=10G
+#SBATCH --time=10:00:00
+#SBATCH --export=ALL
+#SBATCH --qos=soc-gpu-kp     
+ulimit -c unlimited -s
+
+./AES 256 ./GPU/key256.txt ./Test_files/16B_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/32B_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/64B_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/128B_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/256B_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/512B_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/1KB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/1MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/2MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/4MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/8MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/16MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/32MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/64MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/256MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/512MB_rand.txt 2
+./AES 256 ./GPU/key256.txt ./Test_files/1GB_rand.txt 2
