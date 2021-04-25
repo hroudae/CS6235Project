@@ -15,6 +15,7 @@
 
 #define CHARS_PER_BYTE              2
 
+#define CBC_BLOCKS_PER_THREAD       4
 
 __global__ void
 naive_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks)
@@ -83,10 +84,9 @@ ctr_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
 //NOT TESTED
 __global__ void
 cbc_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks, uint8_t* counter) {
-    int i = blockDim.x*blockIdx.x + threadIdx.x;
-    int j;
-
     int step = blockDim.x * blockDim.y * blockDim.z; // Should be 256 right now. Might need to mult by num blocks
+    int i = (blockDim.x*blockIdx.x)*CBC_BLOCKS_PER_THREAD + threadIdx.x;
+    int j;
     int initial = 0; //Janky way to do first step. Theres prob a cleaner mod math way but /shrug
 
     uint8_t ctr[16]; //Treating ctr as init vector. Moved up to avoid re-init
@@ -96,8 +96,10 @@ cbc_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
     //Need as many threads as you have blocks of data
     //Designing mine to assume that data blocks >>>> thread limit (1024 max)
     //But current setup is 256 threads so gonna roll w/ that
-    while(i<numPlainTextBlocks)
+    int k;
+    for (k = 0; k < CBC_BLOCKS_PER_THREAD; k++)
     {
+        if (i >= numPlainTextBlocks) return;
         if (initial != 0){ //Conditionals are bad in kernels aren't they. Wrapped to avoid doing 16 chex
             for (j = 0; j < 16; j++) {
                 *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= *((cipherText_d+(i-step)*(BLOCK_SIZE_BITS / 8))+j);
@@ -114,23 +116,25 @@ cbc_AES_encrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
         }
       AES_Encrypt_Block(plainText_d+i*(BLOCK_SIZE_BITS / 8),
                         cipherText_d+i*(BLOCK_SIZE_BITS / 8),
-                        roundKeys_d, numRounds);
+                        roundKeys_d, numRounds);             
         i+= step;
     }
 }
 
 __global__ void
 cbc_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys_d, NumRounds_t numRounds, uint32_t numPlainTextBlocks, uint8_t* counter) {
-    int i = blockDim.x*blockIdx.x + threadIdx.x;
-    int j;
     int step = blockDim.x * blockDim.y * blockDim.z; // Should be 256 right now. Might need to mult by num blocks
+    int i = (blockDim.x*blockIdx.x)*CBC_BLOCKS_PER_THREAD + threadIdx.x;
+    int j;
     int initial = 0; //Janky way to do first step. Theres prob a cleaner mod math way but /shrug
 
     uint8_t ctr[16]; //Treating ctr as init vector. Moved up to avoid re-init
     incrementCounter(ctr, counter, i); //toss some values in there
 
-    while(i<numPlainTextBlocks)
+    int k;
+    for (k = 0; k < CBC_BLOCKS_PER_THREAD; k++)
     {
+        if (i >= numPlainTextBlocks) return;
         AES_Decrypt_Block(cipherText_d+i*(BLOCK_SIZE_BITS / 8),
             plainText_d + i * (BLOCK_SIZE_BITS / 8),
             roundKeys_d, numRounds);
@@ -141,7 +145,7 @@ cbc_AES_decrypt(uint8_t* cipherText_d, uint8_t* plainText_d, uint32_t* roundKeys
         }
         else {
           initial = 1;
-          for (j = 0; j < 16; j++)
+          for (j = 0; j < 16; j++) 
               *(plainText_d+i*(BLOCK_SIZE_BITS / 8)+j) ^= ctr[j];
         }
         i+=step;
@@ -229,12 +233,13 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     int threadBlockDim = 256;
     dim3 threadsPerBlock(threadBlockDim, 1, 1);
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
+    dim3 blocksPerGrid_CBC(((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim)/CBC_BLOCKS_PER_THREAD, 1, 1);
 
     cudaEventRecord(start);
     if (mode == CTR)
         ctr_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
     else if (mode == CBC)
-        cbc_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
+        cbc_AES_encrypt<<<blocksPerGrid_CBC, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
     else if (mode == ECB)
         naive_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
     else {
@@ -375,12 +380,14 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     int threadBlockDim = 256;
     dim3 threadsPerBlock(threadBlockDim, 1, 1);
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
+    dim3 blocksPerGrid_CBC(((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim)/CBC_BLOCKS_PER_THREAD, 1, 1);
+
 
     cudaEventRecord(start);
     if (mode == CTR)
         ctr_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
     else if (mode == CBC)
-        cbc_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
+        cbc_AES_decrypt<<<blocksPerGrid_CBC, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
     else if (mode == ECB)
         naive_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
     else {
