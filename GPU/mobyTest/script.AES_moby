@@ -11,4 +11,4 @@
 #SBATCH --export=ALL
 #SBATCH --qos=soc-gpu-kp     
 ulimit -c unlimited -s
-./AES 256 ./mobyKey.txt ./2701-0.txt
+./AES 256 ./mobyKey.txt ../../2701-0.txt
