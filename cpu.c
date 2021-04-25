@@ -36,7 +36,7 @@ void AES_Encrypt(unsigned char* plainText, unsigned char* cipherText, uint32_t* 
     }
 
     // generate a random IV to be used in CTR mode
-    if (mode == CTR) {
+    if (mode == CTR || mode == CBC) {
         if (GetIV(iv) < 0) {
             printf("Error getting IV!\n");
             return;
@@ -99,7 +99,7 @@ void AES_Decrypt(unsigned char* cipherText, unsigned char* plainText, uint32_t* 
             numround = 0;
     }
 
-    if (mode == CTR) {
+    if (mode == CTR || mode == CBC) {
         // copy iv to the counter so iv is preserved
         int i;
         for (i = 0; i < 16; i++) counter[i] = iv[i];
@@ -208,7 +208,7 @@ int main(int argc, char* argv[]) {
             mode = CTR;
         }
         else if (argc == 5 && atoi(argv[MODE_INDEX]) == CBC) {
-            printf("CTR mode chosen.\n");
+            printf("CBC mode chosen.\n");
             mode = CBC;
         }
         else if (argc == 5) fprintf(stderr, "Invalid mode: %d\n", atoi(argv[MODE_INDEX]));

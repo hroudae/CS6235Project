@@ -188,7 +188,7 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
         exit(EXIT_FAILURE);
     }
 
-    if (mode == CTR) {
+    if (mode == CTR  || mode == CBC) {
         err = cudaMalloc((void**)&iv_d, sizeof(uint8_t)*16);
         if (err != cudaSuccess)
         {
@@ -213,7 +213,7 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     }
 
     // generate a random IV to be used in CTR mode
-    if (mode == CTR) {
+    if (mode == CTR  || mode == CBC) {
         if (GetIV(iv_h) < 0) {
             printf("Error getting IV!\n");
             exit(EXIT_FAILURE);
@@ -234,8 +234,14 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     cudaEventRecord(start);
     if (mode == CTR)
         ctr_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
-    else
+    else if (mode == CBC)
+        cbc_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
+    else if (mode == ECB)
         naive_AES_encrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
+    else {
+        fprintf(stderr, "INVALID MODE CHOSEN!\n");
+        exit(EXIT_FAILURE);
+    }
     cudaEventRecord(stop);
 
     err = cudaGetLastError();
@@ -280,7 +286,7 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
         exit(EXIT_FAILURE);
     }
 
-    if (mode == CTR) {
+    if (mode == CTR  || mode == CBC) {
         err = cudaFree(iv_d);
         if (err != cudaSuccess)
         {
@@ -332,7 +338,7 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
         fprintf(stderr, "Failed to allocate device vector cipherText_d (error code %s)!\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
-    if (mode == CTR) {
+    if (mode == CTR || mode == CBC) {
         err = cudaMalloc((void**)&iv_d, sizeof(uint8_t)*16);
         if (err != cudaSuccess)
         {
@@ -356,7 +362,7 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
         exit(EXIT_FAILURE);
     }
 
-    if (mode == CTR) {
+    if (mode == CTR || mode == CBC) {
         err = cudaMemcpy(iv_d, iv_h, sizeof(uint8_t) * 16, cudaMemcpyHostToDevice);
         if (err != cudaSuccess)
         {
@@ -374,8 +380,14 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     cudaEventRecord(start);
     if (mode == CTR)
         ctr_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
-    else
+    else if (mode == CBC)
+        cbc_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt, iv_d);
+    else if (mode == ECB)
         naive_AES_decrypt<<<blocksPerGrid, threadsPerBlock>>>(cipherText_d, plainText_d, roundKeys_d, numRounds, plainTextBlockCnt);
+    else {
+        fprintf(stderr, "INVALID MODE CHOSEN!\n");
+        exit(EXIT_FAILURE);
+    }
     cudaEventRecord(stop);
 
     err = cudaGetLastError();
@@ -420,7 +432,7 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
         exit(EXIT_FAILURE);
     }
 
-    if (mode == CTR) {
+    if (mode == CTR  || mode == CBC) {
         err = cudaFree(iv_d);
         if (err != cudaSuccess)
         {
