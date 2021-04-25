@@ -233,7 +233,7 @@ static cudaError_t AES_Encrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint
     int threadBlockDim = 256;
     dim3 threadsPerBlock(threadBlockDim, 1, 1);
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
-    dim3 blocksPerGrid_CBC(((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim)/CBC_BLOCKS_PER_THREAD, 1, 1);
+    dim3 blocksPerGrid_CBC((((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim)+CBC_BLOCKS_PER_THREAD-1)/CBC_BLOCKS_PER_THREAD, 1, 1);
 
     cudaEventRecord(start);
     if (mode == CTR)
@@ -380,7 +380,7 @@ cudaError_t AES_Decrypt(uint8_t* plainText_h, uint8_t* cipherText_h, uint32_t* r
     int threadBlockDim = 256;
     dim3 threadsPerBlock(threadBlockDim, 1, 1);
     dim3 blocksPerGrid((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim, 1, 1);
-    dim3 blocksPerGrid_CBC(((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim)/CBC_BLOCKS_PER_THREAD, 1, 1);
+    dim3 blocksPerGrid_CBC((((plainTextSize_bytes+threadBlockDim-1)/threadBlockDim)+CBC_BLOCKS_PER_THREAD-1)/CBC_BLOCKS_PER_THREAD, 1, 1);
 
 
     cudaEventRecord(start);
